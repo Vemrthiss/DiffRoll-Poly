@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import AudioLoader.music.amt as MusicDataset
 
 @hydra.main(config_path="config", config_name="spec_roll")
-def main(cfg):       
+def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
     
     train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
@@ -57,6 +57,6 @@ def main(cfg):
     
     trainer.fit(model, train_loader, val_loader)
     trainer.test(model, test_loader)
-    
+
 if __name__ == "__main__":
     main()
