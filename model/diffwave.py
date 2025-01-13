@@ -775,8 +775,6 @@ class ClassifierFreeDiffRoll(SpecRollDiffusion):
         x[mask_idx] = self.trainable_parameters
         return x
 
-# Since this is a subclass of LatentRollDiffusion, it is also a pytorch lightning module
-
 
 class ClassifierFreeLatentRoll(LatentRollDiffusion):
     def __init__(self,

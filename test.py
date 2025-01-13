@@ -44,8 +44,9 @@ def main(cfg):
                f"{cfg.task.sampling.type}-{cfg.dataset.name}"
         logger = TensorBoardLogger(save_dir=".", version=1, name=name)
 
-    trainer = pl.Trainer(**cfg.trainer,
-                         logger=logger)
+    # trainer = pl.Trainer(**cfg.trainer,
+    #                      logger=logger)
+    trainer = pl.Trainer(logger=logger)
     
     trainer.test(model, test_loader)
     
