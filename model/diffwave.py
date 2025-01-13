@@ -775,6 +775,8 @@ class ClassifierFreeDiffRoll(SpecRollDiffusion):
         x[mask_idx] = self.trainable_parameters
         return x
 
+# TODO: check this class in general
+
 
 class ClassifierFreeLatentRoll(LatentRollDiffusion):
     def __init__(self,
