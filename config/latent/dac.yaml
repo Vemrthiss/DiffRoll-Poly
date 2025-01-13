@@ -1,0 +1,17 @@
+# TODO: make sure this is correct, do we need n_mels???
+# right now we are not injecting these args, see TODO
+args:
+  sample_rate: ${sampling_rate}
+  n_fft: 2048
+  hop_length: ${hop_length}
+  n_mels: 72
+  f_min: 0
+  f_max: 8000
+  center: True
+  normalized: True
+  pad_mode: 'reflect'
+norms:
+  multiplier: 20
+  amin: 1e-10
+  db_multiplier: 1.0
+  top_db: null    
