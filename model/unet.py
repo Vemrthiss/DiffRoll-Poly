@@ -10,8 +10,10 @@ from task.diffusion import RollDiffusion, SpecRollDiffusion
 import torchaudio
 EPSILON = 1e-6
 
+
 def exists(x):
     return x is not None
+
 
 def align_timesteps(x1, x2):
     """
@@ -19,20 +21,22 @@ def align_timesteps(x1, x2):
     Then this function will discard the extra timestep
     in either x1 or x2 such that they match in T dimension.
     """
-    
+
     T1 = x1.shape[2]
     T2 = x2.shape[2]
-    
+
     Tmin = min(T1, T2)
     x1 = x1[:, :, :Tmin, :]
     x2 = x2[:, :, :Tmin, :]
-    
+
     return x1, x2
+
 
 def default(val, d):
     if exists(val):
         return val
     return d() if isfunction(d) else d
+
 
 class Residual(nn.Module):
     def __init__(self, fn):
@@ -42,11 +46,14 @@ class Residual(nn.Module):
     def forward(self, x, *args, **kwargs):
         return self.fn(x, *args, **kwargs) + x
 
+
 def Upsample(dim):
     return nn.ConvTranspose2d(dim, dim, 4, 2, 1)
 
+
 def Downsample(dim):
     return nn.Conv2d(dim, dim, 4, 2, 1)
+
 
 class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
@@ -57,20 +64,24 @@ class SinusoidalPositionEmbeddings(nn.Module):
         device = time.device
         half_dim = self.dim // 2
         embeddings = math.log(10000) / (half_dim - 1)
-#         print(f"after math.log {embeddings.shape=}")        
-        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings) # taking exp
-        embeddings = time[:, None] * embeddings[None, :] # boardcasting (B, dim//2)
-        embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1) # apply sin and cos (B, dim)
+#         print(f"after math.log {embeddings.shape=}")
+        embeddings = torch.exp(torch.arange(
+            half_dim, device=device) * -embeddings)  # taking exp
+        # boardcasting (B, dim//2)
+        embeddings = time[:, None] * embeddings[None, :]
+        # apply sin and cos (B, dim)
+        embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
 
+
 class Block(nn.Module):
-    def __init__(self, dim, dim_out, groups = 8):
+    def __init__(self, dim, dim_out, groups=8):
         super().__init__()
-        self.proj = nn.Conv2d(dim, dim_out, 3, padding = 1)
+        self.proj = nn.Conv2d(dim, dim_out, 3, padding=1)
         self.norm = nn.GroupNorm(groups, dim_out)
         self.act = nn.SiLU()
 
-    def forward(self, x, scale_shift = None):
+    def forward(self, x, scale_shift=None):
         x = self.proj(x)
         x = self.norm(x)
 
@@ -80,6 +91,7 @@ class Block(nn.Module):
 
         x = self.act(x)
         return x
+
 
 class ResnetBlock(nn.Module):
     """https://arxiv.org/abs/1512.03385"""
@@ -94,7 +106,8 @@ class ResnetBlock(nn.Module):
 
         self.block1 = Block(dim, dim_out, groups=groups)
         self.block2 = Block(dim_out, dim_out, groups=groups)
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, time_emb=None):
         h = self.block1(x)
@@ -105,6 +118,7 @@ class ResnetBlock(nn.Module):
 
         h = self.block2(h)
         return h + self.res_conv(x)
+
 
 class ConvNextBlock(nn.Module):
     """https://arxiv.org/abs/2201.03545"""
@@ -127,7 +141,8 @@ class ConvNextBlock(nn.Module):
             nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
         )
 
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, time_emb=None):
         h = self.ds_conv(x)
@@ -137,7 +152,8 @@ class ConvNextBlock(nn.Module):
             h = h + rearrange(condition, "b c -> b c 1 1")
 
         h = self.net(h)
-        return h + self.res_conv(x)    
+        return h + self.res_conv(x)
+
 
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
@@ -147,7 +163,8 @@ class PreNorm(nn.Module):
 
     def forward(self, x):
         x = self.norm(x)
-        return self.fn(x)    
+        return self.fn(x)
+
 
 class Attention(nn.Module):
     def __init__(self, dim, heads=4, dim_head=32):
@@ -162,7 +179,8 @@ class Attention(nn.Module):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=1)
         q, k, v = map(
-            lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
+            lambda t: rearrange(
+                t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
         )
         q = q * self.scale
 
@@ -174,6 +192,7 @@ class Attention(nn.Module):
         out = rearrange(out, "b h (x y) d -> b (h d) x y", x=h, y=w)
         return self.to_out(out)
 
+
 class LinearAttention(nn.Module):
     def __init__(self, dim, heads=4, dim_head=32):
         super().__init__()
@@ -182,14 +201,15 @@ class LinearAttention(nn.Module):
         hidden_dim = dim_head * heads
         self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
 
-        self.to_out = nn.Sequential(nn.Conv2d(hidden_dim, dim, 1), 
+        self.to_out = nn.Sequential(nn.Conv2d(hidden_dim, dim, 1),
                                     nn.GroupNorm(1, dim))
 
     def forward(self, x):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=1)
         q, k, v = map(
-            lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
+            lambda t: rearrange(
+                t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
         )
 
         q = q.softmax(dim=-2)
@@ -199,8 +219,10 @@ class LinearAttention(nn.Module):
         context = torch.einsum("b h d n, b h e n -> b h d e", k, v)
 
         out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
-        out = rearrange(out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
-        return self.to_out(out)    
+        out = rearrange(out, "b h c (x y) -> b (h c) x y",
+                        h=self.heads, x=h, y=w)
+        return self.to_out(out)
+
 
 class Unet(RollDiffusion):
     def __init__(
@@ -272,7 +294,8 @@ class Unet(RollDiffusion):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        block_klass(dim_out * 2, dim_in, time_emb_dim=time_dim),
+                        block_klass(dim_out * 2, dim_in,
+                                    time_emb_dim=time_dim),
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
                         Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                         Upsample(dim_in) if not is_last else nn.Identity(),
@@ -284,13 +307,12 @@ class Unet(RollDiffusion):
         self.final_conv = nn.Sequential(
             block_klass(dim, dim), nn.Conv2d(dim, out_dim, 1)
         )
-        
-
 
     def forward(self, x, time):
-        # x = (B, 1, dim, dim)       
-        x = self.init_conv(x) # (B, 18, dim, dim)
-        t = self.time_mlp(time) if exists(self.time_mlp) else None # (B, dim*4)
+        # x = (B, 1, dim, dim)
+        x = self.init_conv(x)  # (B, 18, dim, dim)
+        t = self.time_mlp(time) if exists(
+            self.time_mlp) else None  # (B, dim*4)
         h = []
 
         # downsample
@@ -317,8 +339,8 @@ class Unet(RollDiffusion):
         x = self.final_conv(x)
 
         return x
-    
-    
+
+
 class SpecConvNextBlock(nn.Module):
     """https://arxiv.org/abs/2201.03545"""
 
@@ -331,7 +353,7 @@ class SpecConvNextBlock(nn.Module):
         )
 
         self.ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
-        
+
         self.spec_ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
 
         self.net = nn.Sequential(
@@ -341,16 +363,17 @@ class SpecConvNextBlock(nn.Module):
             nn.GroupNorm(1, dim_out * mult),
             nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
         )
-        
+
         self.spec_net = nn.Sequential(
             nn.GroupNorm(1, dim) if norm else nn.Identity(),
             nn.Conv2d(dim, dim_out * mult, 3, padding=1),
             nn.GELU(),
             nn.GroupNorm(1, dim_out * mult),
             nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
-        )        
+        )
 
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, spec, time_emb=None):
         h = self.ds_conv(x)
@@ -363,8 +386,8 @@ class SpecConvNextBlock(nn.Module):
         h = self.net(h)
         spec_h = self.spec_net(spec_h)
         return h + self.res_conv(x), spec_h
-    
-    
+
+
 class SpecConvNextBlockUp(nn.Module):
     """https://arxiv.org/abs/2201.03545"""
 
@@ -375,7 +398,7 @@ class SpecConvNextBlockUp(nn.Module):
             if exists(time_emb_dim)
             else None
         )
-    
+
         self.ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
         self.spec_ds_conv = nn.Conv2d(dim//3, dim, 7, padding=3, groups=1)
 
@@ -386,16 +409,17 @@ class SpecConvNextBlockUp(nn.Module):
             nn.GroupNorm(1, dim_out * mult),
             nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
         )
-        
+
         self.spec_net = nn.Sequential(
             nn.GroupNorm(1, dim) if norm else nn.Identity(),
             nn.Conv2d(dim, dim_out * mult, 3, padding=1),
             nn.GELU(),
             nn.GroupNorm(1, dim_out * mult),
             nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
-        )        
+        )
 
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, spec, time_emb=None):
         h = self.ds_conv(x)
@@ -407,8 +431,9 @@ class SpecConvNextBlockUp(nn.Module):
 
         h = self.net(h)
         spec_h = self.spec_net(spec_h)
-        return h + self.res_conv(x), spec_h    
-    
+        return h + self.res_conv(x), spec_h
+
+
 class SpecUnet(SpecRollDiffusion):
     # Unet conditioned on spectrogram
     def __init__(
@@ -429,11 +454,11 @@ class SpecUnet(SpecRollDiffusion):
 
         init_dim = default(init_dim, dim // 3 * 2)
         self.init_conv = nn.Conv2d(channels, init_dim, 7, padding=3)
-        
+
         # Initial layers for spectrograms
         self.spec_init_conv = nn.Conv2d(channels, init_dim, 7, padding=3)
         self.spec_init_fc = nn.Linear(spec_args.n_mels, 88)
-        
+
         self.mel_layer = torchaudio.transforms.MelSpectrogram(**spec_args)
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
@@ -461,10 +486,10 @@ class SpecUnet(SpecRollDiffusion):
         # layers
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
-        
+
         self.spec_downs = nn.ModuleList([])
         self.spec_ups = nn.ModuleList([])
-        
+
         num_resolutions = len(in_out)
 
         for ind, (dim_in, dim_out) in enumerate(in_out):
@@ -480,7 +505,7 @@ class SpecUnet(SpecRollDiffusion):
                         Downsample(dim_out) if not is_last else nn.Identity(),
                     ]
                 )
-            )     
+            )
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
@@ -493,7 +518,8 @@ class SpecUnet(SpecRollDiffusion):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        up_block_klass(dim_out * 3, dim_in, time_emb_dim=time_dim),
+                        up_block_klass(dim_out * 3, dim_in,
+                                       time_emb_dim=time_dim),
                         block_klass(dim_in, dim_in, time_emb_dim=time_dim),
                         Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                         Upsample(dim_in) if not is_last else nn.Identity(),
@@ -505,23 +531,22 @@ class SpecUnet(SpecRollDiffusion):
         out_dim = default(out_dim, channels)
         self.final_block = block_klass(dim, dim)
         self.final_conv = nn.Conv2d(dim, out_dim, 1)
-        
-
 
     def forward(self, x, waveform, time):
         spec = self.mel_layer(waveform)
-        spec = spec.transpose(1,2) # (B, T, n_mels)
+        spec = spec.transpose(1, 2)  # (B, T, n_mels)
         spec = torch.log(spec+EPSILON)
         spec = spec.unsqueeze(1)
-        
+
         spec, x = align_timesteps(spec, x)
-        
+
         spec = self.spec_init_conv(spec)
         spec = self.spec_init_fc(spec)
-        
-        # x = (B, 1, dim, dim)       
-        x = self.init_conv(x) # (B, 18, dim, dim)
-        t = self.time_mlp(time) if exists(self.time_mlp) else None # (B, dim*4)
+
+        # x = (B, 1, dim, dim)
+        x = self.init_conv(x)  # (B, 18, dim, dim)
+        t = self.time_mlp(time) if exists(
+            self.time_mlp) else None  # (B, dim*4)
         h = []
 
         # downsample
@@ -533,27 +558,26 @@ class SpecUnet(SpecRollDiffusion):
             h.append([x, spec])
             x = downsample(x)
             spec = downsample(spec)
-            counter += 1 
+            counter += 1
         # bottleneck
         x, spec = self.mid_block1(x, spec, t)
         x = self.mid_attn(x)
         x, spec = self.mid_block2(x, spec, t)
-        
 
         # upsample
-        for block1, block2, attn, upsample, spec_upsample in self.ups:       
+        for block1, block2, attn, upsample, spec_upsample in self.ups:
             x = torch.cat((x, *h.pop()), dim=1)
             x, spec = block1(x, spec, t)
             x, spec = block2(x, spec, t)
             x = attn(x)
             x = upsample(x)
             spec = spec_upsample(spec)
-            
+
         x, spec = self.final_block(x, spec)
         x = self.final_conv(x)
 
         return x
-    
+
 
 def cosine_beta_schedule(timesteps, s=0.008):
     """
@@ -561,7 +585,8 @@ def cosine_beta_schedule(timesteps, s=0.008):
     """
     steps = timesteps + 1
     x = torch.linspace(0, timesteps, steps)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = torch.cos(
+        ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0.0001, 0.9999)
@@ -571,6 +596,7 @@ def quadratic_beta_schedule(timesteps):
     beta_start = 0.0001
     beta_end = 0.02
     return torch.linspace(beta_start**0.5, beta_end**0.5, timesteps) ** 2
+
 
 def sigmoid_beta_schedule(timesteps):
     beta_start = 0.0001
