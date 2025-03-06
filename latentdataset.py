@@ -127,21 +127,29 @@ def collate_fn(batch):
     dac_latents = torch.stack(padded_dac_latents)
     dac_masks = torch.stack(dac_masks)
 
-    # Pad piano_roll and create masks
+    # Pad piano_roll and frame and create masks
     padded_piano_roll = []
     piano_roll_masks = []
-    for roll in piano_roll_list:
+    padded_frame = []
+    frame_masks = []
+    for roll, frame in zip(piano_roll_list, frame_list):
         length = roll.shape[0]
         pad_length = max_roll_length - length
         if pad_length > 0:
             pad = torch.zeros(pad_length, roll.shape[1])
             roll = torch.cat([roll, pad], dim=0)
+            frame = torch.cat([frame, pad], dim=0)
         padded_piano_roll.append(roll)
+        padded_frame.append(frame)
         piano_roll_mask = torch.cat(
             [torch.ones(length), torch.zeros(pad_length)])
+        frame_mask = torch.cat([torch.ones(length), torch.zeros(pad_length)])
         piano_roll_masks.append(piano_roll_mask)
+        frame_masks.append(frame_mask)
     piano_roll = torch.stack(padded_piano_roll)
     piano_roll_masks = torch.stack(piano_roll_masks)
+    frame = torch.stack(padded_frame)
+    frame_masks = torch.stack(frame_masks)
 
     # Pad audio waveforms and create masks
     padded_audio = []
@@ -157,21 +165,6 @@ def collate_fn(batch):
         audio_masks.append(audio_mask)
     audio = torch.stack(padded_audio)
     audio_masks = torch.stack(audio_masks)
-
-    # Pad frame and create masks
-    padded_frame = []
-    frame_masks = []
-    for frame in frame_list:
-        length = frame.shape[0]
-        pad_length = max_frame_length - length
-        if pad_length > 0:
-            pad = torch.zeros(pad_length)
-            frame = torch.cat([frame, pad])
-        padded_frame.append(frame)
-        frame_mask = torch.cat([torch.ones(length), torch.zeros(pad_length)])
-        frame_masks.append(frame_mask)
-    frame = torch.stack(padded_frame)
-    frame_masks = torch.stack(frame_masks)
 
     return {
         'dac_latents': dac_latents,

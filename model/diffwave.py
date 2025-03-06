@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from task.diffusion import SpecRollDiffusion, LatentRollDiffusion
 from task.baseline import SpecRollBaseline
 import torchaudio
-from model.utils import Normalization
+from model.utils import LatentNormalization, Normalization
 from math import sqrt
 
 
@@ -52,12 +52,14 @@ def Conv2d(*args, **kwargs):
     return layer
 
 
+# swish activation function as mentioned in diffwave paper, where beta = 1 becomes silu
 @torch.jit.script
 def silu(x):
     return x * torch.sigmoid(x)
 
 
 class DiffusionEmbedding(nn.Module):
+    # See diffwave paper which illustrates projection1 and projection2
     def __init__(self, max_steps):
         super().__init__()
         self.register_buffer('embedding', self._build_embedding(
@@ -113,7 +115,7 @@ class SpectrogramUpsampler(nn.Module):
 
 class ResidualBlock(nn.Module):
     def __init__(self,
-                 latent_channels,  # replaced n_mels
+                 latent_channels,
                  residual_channels,
                  dilation,
                  kernel_size=3,
@@ -125,6 +127,8 @@ class ResidualBlock(nn.Module):
                                    padding=((kernel_size-1) *
                                             (dilation-1)+kernel_size-1)//2,
                                    dilation=dilation)
+
+        # FC layer in the residual block (as shown in paper)
         self.diffusion_projection = Linear(512, residual_channels)
 
         if not uncond:
@@ -137,23 +141,34 @@ class ResidualBlock(nn.Module):
             residual_channels, 2 * residual_channels, 1)
 
     def forward(self, x, diffusion_step, conditioner=None):
+        # x (B, 512, T) into the block
         assert (conditioner is None and self.conditioner_projection is None) or \
                (conditioner is not None and self.conditioner_projection is not None)
 
         diffusion_step = self.diffusion_projection(
             diffusion_step).unsqueeze(-1)
+        # x (B, 512, T) + diffusion_step (B, 512, 1) ---> (B, 512, T) [element-wise addition as in paper]
         y = x + diffusion_step
 
         if self.conditioner_projection is None:
             y = self.dilated_conv(y)
         else:
+            # conditioner (B, 96, T) into the block (for 16khz dac latents)
+            # converts from latent_channels to 2 * residual channels
             conditioner = self.conditioner_projection(conditioner)
+            # conditioner (B, 2 * residual channels, T)
+            # dilated_conv also outputs (B, 2 * residual channels, T)
+            # element-wise addition as in paper
             y = self.dilated_conv(y) + conditioner
 
+        # y (B, 2 * residual channels, T)
+        # split into gate and filter (B, residual channels, T)
         gate, filter = torch.chunk(y, 2, dim=1)
+        # as with paper, element-wise multiplication
         y = torch.sigmoid(gate) * torch.tanh(filter)
 
         y = self.output_projection(y)
+        # y (B, 2 * residual channels, T)
         residual, skip = torch.chunk(y, 2, dim=1)
         return (x + residual) / sqrt(2.0), skip
 
@@ -784,7 +799,7 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
                  unconditional,
                  condition,
                  latent_channels=72,  # DAC latent dimension
-                 norm_args=None,
+                 norm_args=None,  # Should be (min_val, max_val, mode)
                  residual_layers=30,
                  kernel_size=3,
                  dilation_base=1,
@@ -799,6 +814,14 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
         # Piano roll input projection
         self.input_projection = Conv1d(88, residual_channels, 1)
         self.diffusion_embedding = DiffusionEmbedding(len(self.betas))
+
+        # TODO: check this normalization
+        if norm_args is not None:
+            self.normalize_latents = LatentNormalization(0, 1, 'batchwise')
+            # this is called in base class
+            self.normalize = Normalization(*norm_args)
+        else:
+            self.normalize = nn.Identity()
 
         # Handle different conditioning types
         if condition == 'trainable_latent':
@@ -820,6 +843,7 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
             ResidualBlock(
                 latent_channels=latent_channels,  # replaced n_mels with latent_channels
                 residual_channels=residual_channels,
+                # 2^(i mod n) in diffwave paper
                 dilation=dilation_base**(i % dilation_bound),
                 kernel_size=kernel_size,
                 uncond=unconditional
@@ -831,28 +855,15 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
         self.output_projection = Conv1d(residual_channels, 88, 1)
         nn.init.zeros_(self.output_projection.weight)
 
-        # Optional normalization for latents
-        # TODO: looks like normalization is not used for now
-        if norm_args is not None:
-            self.normalize = Normalization(*norm_args)
-        else:
-            self.normalize = nn.Identity()
-
     def forward(self, x_t, dac_latents, diffusion_step, sampling=False, inpainting_t=None, inpainting_f=None):
-        # x_t: (B, 1, T, F)
-        # dac_latents: (B, 72, T)
-        x_t = x_t.squeeze(1).transpose(1, 2)  # (B, F, T)
+        # x_t: (B, 1, T, 88). 88 is the number of piano keys
+        # dac_latents: (B, 96, T_L). T_L = T/4, latent time is 1/4 the resolution
+        x_t = x_t.squeeze(1).transpose(1, 2)  # (B, 88, T)
 
-        # TODO: during sampling, the shape of dac latent is NOT b,72,t.
-        # I suspect that during data loading, I need to extract the dac latents, right now only the spec/waveform is extracted
-
+        dac_latents = self.normalize_latents(dac_latents)
         # Apply dropout during training for classifier-free guidance
         if self.training and self.latent_dropout > 0:
             dac_latents = self.uncon_dropout(dac_latents, self.latent_dropout)
-
-        # print("---- debug ------")
-        # print(dac_latents.shape)
-        # print(x_t.shape)
 
         # TODO: please check this inpainting
         if inpainting_t and inpainting_f == None:
@@ -864,20 +875,25 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
                 inpainting_t[0]):int(inpainting_t[1])] = -1
 
         # For unconditional sampling
-        if sampling and self.hparams.condition == 'trainable_latent':
-            dac_latents = self.trainable_parameters.expand(
-                x_t.shape[0], -1, -1)
+        # if sampling and self.hparams.condition == 'trainable_latent':
+        #     dac_latents = self.trainable_parameters.expand(
+        #         x_t.shape[0], -1, -1)
+        if sampling == True:
+            if self.hparams.condition == 'trainable_latent':
+                dac_latents = self.trainable_parameters  # TODO: fix esp this
+            elif self.hparams.condition == 'trainable_z' or self.hparams.condition == 'fixed':
+                dac_latents = torch.full_like(dac_latents, -1)
 
         # Align temporal dimensions if needed
         if dac_latents.shape[-1] != x_t.shape[-1]:
-            dac_latents = F.interpolate(
-                dac_latents,
-                size=x_t.shape[-1],
-                mode='linear',
-                align_corners=False
-            )
+            # we use repeat interleave because latents are just 1/4 the resolution of the roll
+            dac_latents = torch.repeat_interleave(
+                dac_latents, repeats=4, dim=2)
+            # dac_latents (B, 96, T)
 
+        # ----- here follows DiffWave model -----
         # Process piano roll
+        # x_t (B, 88, T) ---> (B, 512, T), where 512 is the residual channels
         x = self.input_projection(x_t)
         x = F.relu(x)
 
@@ -891,10 +907,14 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
 
         x = skip / sqrt(len(self.residual_layers))
         x = self.skip_projection(x)
+        # x (B, residual channels [512], T)
         x = F.relu(x)
         x = self.output_projection(x)
         return x.transpose(1, 2).unsqueeze(1), dac_latents
 
+    # we can use masked value -1 because normalized latents are between 0 and 1
+    # TODO: but what does -1 REALLY represent? In the case of cmel, -1 is used because 0 means silence
+    # what does a 0 or 1 mean for latents?
     def fixed_dropout(self, x, p, masked_value=-1):
         mask = torch.distributions.Bernoulli(
             probs=(p)).sample((x.shape[0],)).long()

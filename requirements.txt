@@ -6,7 +6,7 @@ matplotlib
 joblib
 mido
 pydub
-git+https://github.com/KinWaiCheuk/AudioLoader.git
+git+https://github.com/Vemrthiss/AudioLoader.git
 torch
 torchvision
 torchaudio

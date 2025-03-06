@@ -1,25 +1,22 @@
 import hydra
 from hydra.utils import to_absolute_path
 
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 import model as Model
 
-from latentdataset import LatentAudioDataset, collate_fn
+import AudioLoader.music.amt as MusicDataset
 
 
 @hydra.main(config_path="config", config_name="test_latent_roll")
 def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
-    dataset = LatentAudioDataset(
-        f'{cfg.data_root}/maestro-latents',
-        f'{cfg.data_root}/maestro-v2.0.0'
-    )
-    _, _, test_set = random_split(dataset, [0.6, 0.2, 0.2])
+    cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
-    test_loader = DataLoader(test_set, collate_fn=collate_fn,batch_size=4)
+    test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    test_loader = DataLoader(test_set, batch_size=4)
 
     # Model
     if cfg.task.frame_threshold != None and cfg.task.sampling.type != None:
@@ -35,15 +32,14 @@ def main(cfg):
         model = getattr(Model, cfg.model.name).load_from_checkpoint(
             to_absolute_path(cfg.checkpoint_path))
 
-    if cfg.model.name == 'ClassifierFreeDiffRoll':
+    if cfg.model.name == 'ClassifierFreeLatentRoll':
         name = f"Test-x0_pred_0-{cfg.model.name}-" \
                f"{cfg.task.sampling.type}-w{cfg.task.sampling.w}-{cfg.dataset.name}"
-        logger = TensorBoardLogger(save_dir=".", version=1, name=name)
     else:
         name = f"Test-x0_pred_0-{cfg.model.name}-" \
                f"{cfg.task.sampling.type}-{cfg.dataset.name}"
-        logger = TensorBoardLogger(save_dir=".", version=1, name=name)
 
+    logger = TensorBoardLogger(save_dir=".", version=1, name=name)
     trainer = pl.Trainer(logger=logger)
 
     trainer.test(model, test_loader)

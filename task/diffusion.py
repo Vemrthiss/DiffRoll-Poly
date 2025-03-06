@@ -29,6 +29,19 @@ def linear_beta_schedule(beta_start, beta_end, timesteps):
     return torch.linspace(beta_start, beta_end, timesteps)
 
 
+def cosine_beta_schedule(timesteps, s=0.008):
+    '''
+    s is the offset
+    '''
+    def f(t):
+        return torch.cos((t / timesteps + s) / (1 + s) * 0.5 * torch.pi) ** 2
+    x = torch.linspace(0, timesteps, timesteps + 1)
+    alphas_cumprod = f(x) / f(torch.tensor([0]))
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    betas = torch.clip(betas, 0.0001, 0.999)
+    return betas
+
+
 def q_sample(x_start, t, sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod, noise=None):
     """
     x_start: x0 (B, 1, T, F)
@@ -402,15 +415,16 @@ class SpecRollDiffusion(pl.LightningModule):
             # ======== Animation saved ===========
 
         print("specrolldiffusion")
-        print(roll_label.shape)
-        print(roll_pred.shape)
-        print(roll_label.flatten().shape)
-        print(roll_pred.flatten().shape)
-        print(roll_label.flatten())
-        print(roll_pred.flatten())
+        # NOTE: roll_pred is not 0 to 1
+        print(roll_pred.min())
+        print(roll_pred.max())
+        print(self.hparams.frame_threshold)
         frame_p, frame_r, frame_f1, _ = precision_recall_fscore_support(roll_label.flatten(),
                                                                         roll_pred.flatten() > self.hparams.frame_threshold,
                                                                         average='binary')
+        print((roll_pred.flatten() > self.hparams.frame_threshold).sum())
+        print(roll_label.flatten().sum())
+        print(frame_f1)
 
         for sample_idx, (roll_pred_i, roll_label_i) in enumerate(zip(roll_pred, roll_label.numpy())):
             # roll_pred (B, 1, T, F)
@@ -542,6 +556,7 @@ class SpecRollDiffusion(pl.LightningModule):
 
 #             self.log("Test/Note_F1", f)
 #         self.log("Test/Frame_F1", frame_f1)
+
 
     def predict_step(self, batch, batch_idx):
         noise = batch[0]
@@ -678,6 +693,8 @@ class SpecRollDiffusion(pl.LightningModule):
         fig, ax = plt.subplots(2, 2)
         for idx, tensor in enumerate(tensors):  # visualize only 4 piano rolls
             # roll_pred (1, T, F)
+            if (idx >= ax.flatten().size):
+                break
             ax.flatten()[idx].imshow(tensor[0].T.cpu(),
                                      aspect='auto', origin='lower')
         self.logger.experiment.add_figure(
@@ -1161,12 +1178,15 @@ class LatentRollDiffusion(pl.LightningModule):
         self.save_hyperparameters()
 
         # define beta schedule
-        self.betas = linear_beta_schedule(
-            beta_start, beta_end, timesteps=timesteps)
+        # self.betas = linear_beta_schedule(
+        #     beta_start, beta_end, timesteps=timesteps)
+        self.betas = cosine_beta_schedule(timesteps)
 
         # define alphas
         alphas = 1. - self.betas
         alphas_cumprod = torch.cumprod(alphas, axis=0)
+        print('first timestep alpha', alphas_cumprod[0])
+        print('last timestep alpha', alphas_cumprod[-1])
         alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
         self.sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
 
@@ -1218,9 +1238,9 @@ class LatentRollDiffusion(pl.LightningModule):
             if self.current_epoch == 0:
                 self.visualize_figure(
                     tensors['label_roll'], 'Val/label_roll', batch_idx)
-                if self.hparams.unconditional == False and tensors['latents'] is not None:
-                    self.visualize_latents(
-                        tensors['latents'], 'Val/latents', batch_idx)
+                # if self.hparams.unconditional == False and tensors['latents'] is not None:
+                #     self.visualize_latents(
+                #         tensors['latents'], 'Val/latents', batch_idx)
 
     def test_step(self, batch, batch_idx):
         noise_list, latents = self.sampling(batch, batch_idx)
@@ -1231,7 +1251,7 @@ class LatentRollDiffusion(pl.LightningModule):
 
         if batch_idx == 0:
             torch.save(latents, 'latents.pt')
-            self.visualize_latents(latents, 'Test/latents', batch_idx)
+            # self.visualize_latents(latents, 'Test/latents', batch_idx)
             for noise_npy, t_index in noise_list:
                 if (t_index+1) % 10 == 0:
                     fig, ax = plt.subplots(2, 2)
@@ -1294,19 +1314,18 @@ class LatentRollDiffusion(pl.LightningModule):
             ani.save('algo2.gif', dpi=80, writer='imagemagick')
             # ======== Animation saved ===========
 
-        # TODO: it was avg = 'binary', but that was not working. Might want to check diffroll
-        # SANITY CHECK: roll_label and roll_pred must be the same shape (this is correct)
-        # suspect roll_pred has something wrong
         print("latentrolldiffusion")
-        print(roll_label.shape)
-        print(roll_pred.shape)
-        print(roll_label.flatten().shape)
-        print(roll_pred.flatten().shape)
-        print(roll_label.flatten())
-        print(roll_pred.flatten())
+        # TODO: roll_label is 0 to 1, but roll_pred is not, this is the same in specrolldiffusion
+        print(roll_pred.min())
+        print(roll_pred.max())
+
+        # ======== Animation saved ===========
         frame_p, frame_r, frame_f1, _ = precision_recall_fscore_support(roll_label.flatten(),
                                                                         roll_pred.flatten() > self.hparams.frame_threshold,
                                                                         average='binary')
+        print((roll_pred.flatten() > self.hparams.frame_threshold).sum())
+        print(roll_label.flatten().sum())
+        print(frame_f1)
 
         for sample_idx, (roll_pred_i, roll_label_i) in enumerate(zip(roll_pred, roll_label.numpy())):
             # roll_pred (B, 1, T, F)
@@ -1326,8 +1345,10 @@ class LatentRollDiffusion(pl.LightningModule):
 
             # HARDCODE HOP LENGTH AND SAMPLE RATE FIRST, we do not have spec/latent args yet, but they take from the latent_roll base yaml file
             # scaling = self.hparams.spec_args.hop_length / self.hparams.spec_args.sample_rate
-            scaling = 512 / 16000
+            # scaling = 512 / 16000
+            # scaling = 2048/48000
             # scaling = HOP_LENGTH / SAMPLE_RATE
+            scaling = 128 / 16000
 
             # Converting time steps to seconds and midi number to frequency
             i_ref = (i_ref * scaling).reshape(-1, 2)
@@ -1471,18 +1492,18 @@ class LatentRollDiffusion(pl.LightningModule):
                       i_est,
                       [127]*len(p_est))
 
-    def visualize_latents(self, latents, tag, batch_idx):
-        """New method to visualize DAC latents"""
-        fig, ax = plt.subplots(2, 2)
-        for idx, latent in enumerate(latents[:4]):  # visualize only 4 latents
-            if idx >= ax.flatten().size:
-                break
-            im = ax.flatten()[idx].imshow(
-                latent.cpu(), aspect='auto', origin='lower')
-            plt.colorbar(im, ax=ax.flatten()[idx])
-        self.logger.experiment.add_figure(
-            f"{tag}", fig, global_step=self.current_epoch)
-        plt.close()
+            save_midi(os.path.join('./', f'raw_midi_{batch_idx}_{roll_idx}.mid'),
+                      p_est,
+                      i_est,
+                      [127]*len(p_est))
+
+    # def visualize_latents(self, latents, tag, batch_idx):
+    #     """New method to visualize DAC latents"""
+    #     fig, ax = plt.subplots(2, 2)
+    #     for idx, latent in enumerate(latents[:4]):  # visualize only 4 latents
+    #         if idx >= ax.flatten().size:
+    #             break
+    #         im = ax.flatten()[idx].imshow(
 
     def visualize_figure(self, tensors, tag, batch_idx):
         fig, ax = plt.subplots(2, 2)
@@ -1497,15 +1518,23 @@ class LatentRollDiffusion(pl.LightningModule):
         plt.close()
 
     def step(self, batch):
-        # batch["frame"] (B, 640, 88)
+        # batch["frame"] (B, T, 88)
         # batch["audio"] (B, L)
         batch_size = batch["frame"].shape[0]
         roll = self.normalize(batch["frame"]).unsqueeze(1)
-        latents = batch["dac_latents"]
         device = roll.device
+        latents = batch["dac_latents"]
 
         t = torch.randint(0, self.hparams.timesteps,
                           (batch_size,), device=device).long()
+
+        # EXPERIMENTAL: try weighted sampling
+        # if random.random() < 0.5:
+        #     t = torch.randint(0, self.hparams.timesteps,
+        #                       (batch_size,), device=device).long()
+        # else:
+        #     t = torch.randint(int(0.5 * self.hparams.timesteps), self.hparams.timesteps,
+        #                       (batch_size,), device=device).long()
 
         noise = torch.randn_like(roll)
 
@@ -1549,7 +1578,7 @@ class LatentRollDiffusion(pl.LightningModule):
         Sampling process for the diffusion model
         """
         print("------SAMPLING-------")
-        roll = self.normalize(batch["piano_roll"]).unsqueeze(1)
+        roll = self.normalize(batch["frame"]).unsqueeze(1)
         latents = batch["dac_latents"]  # DAC latents
 
         self.inner_loop.refresh()
@@ -1557,11 +1586,30 @@ class LatentRollDiffusion(pl.LightningModule):
 
         # Start from random noise
         noise = torch.randn_like(roll)
+        # ------- DEBUG-------
+        # batch_size = batch["frame"].shape[0]
+        # fixed_t = 200
+        # t = torch.full((batch_size,), fixed_t-1, device=roll.device).long()
+        # x_t = q_sample(
+        #     x_start=roll,
+        #     t=t,
+        #     sqrt_alphas_cumprod=self.sqrt_alphas_cumprod,
+        #     sqrt_one_minus_alphas_cumprod=self.sqrt_one_minus_alphas_cumprod,
+        #     noise=noise)
+        # ------- DEBUG-------
+
         noise_list = []
         noise_list.append((noise, self.hparams.timesteps))
 
+        # ------- DEBUG-------
+        # noise = x_t
+        # noise_list.append((noise, fixed_t))
+        # ------- DEBUG-------
+
         # Reverse diffusion process
+        # t index goes from 199 to 0 inclusive
         for t_index in reversed(range(0, self.hparams.timesteps)):
+            # for t_index in reversed(range(0, fixed_t)):
             if self.hparams.debug:
                 # For debugging, use piano roll as conditioning
                 noise, latent_features = self.reverse_diffusion(
@@ -1626,7 +1674,7 @@ class LatentRollDiffusion(pl.LightningModule):
         """DDPM sampling with x0 parameterization
         Args:
             x: x_t, when t=T it is pure Gaussian noise (B, 1, T, F)
-            latents: DAC latents for conditioning (B, 72, T)
+            latents: DAC latents for conditioning (B, 72/96, T)
             t_index: current timestep
         """
         t_tensor = torch.tensor(t_index).repeat(x.shape[0]).to(x.device)
@@ -1652,7 +1700,7 @@ class LatentRollDiffusion(pl.LightningModule):
         """DDIM sampling with x0 parameterization
         Args:
             x: x_t, when t=T it is pure Gaussian noise (B, 1, T, F)
-            latents: DAC latents for conditioning (B, 72, T)
+            latents: DAC latents for conditioning (B, 72/96, T)
             t_index: current timestep
         """
         t_tensor = torch.tensor(t_index).repeat(x.shape[0]).to(x.device)
@@ -1713,7 +1761,7 @@ class LatentRollDiffusion(pl.LightningModule):
         """Classifier-free guidance DDPM sampling with x0 parameterization
         Args:
             x: x_t, when t=T it is pure Gaussian noise (B, 1, T, F)
-            latents: DAC latents for conditioning (B, 72, T)
+            latents: DAC latents for conditioning (B, 72/96, T)
             t_index: current timestep
         """
         t_tensor = torch.tensor(t_index).repeat(x.shape[0]).to(x.device)

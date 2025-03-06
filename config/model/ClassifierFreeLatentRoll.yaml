@@ -2,8 +2,8 @@ name: 'ClassifierFreeLatentRoll'
 args:
   residual_channels: 512
   unconditional: False
-  condition: 'fixed' # either trainable_spec or trainable_z, or fixed
-  latent_channels: 72 # DAC latent dimension
+  condition: 'fixed' # either trainable_latent or trainable_z, or fixed
+  latent_channels: 96 # DAC latent dimension
   residual_layers: 15
   kernel_size: 3
   dilation_base: 2

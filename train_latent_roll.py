@@ -9,30 +9,21 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from latentdataset import LatentAudioDataset, collate_fn
+import AudioLoader.music.amt as MusicDataset
 
 
 @hydra.main(config_path="config", config_name="latent_roll")
 def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
+    cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
-    dataset = LatentAudioDataset(
-        f'{cfg.data_root}/maestro-latents',
-        f'{cfg.data_root}/maestro-v2.0.0'
-    )
-    train_set, val_set, test_set = random_split(dataset, [0.6, 0.2, 0.2])
-    # print('SANTIY CHECK')
-    # TODO: recall there might be a problem with aligning the latents and piano rolls?
-    # dac_latents: torch.Tensor = train_set[1]['dac_latents']
-    # piano_roll: torch.Tensor = train_set[1]['piano_roll']
-    # print(torch.count_nonzero(piano_roll))
+    train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
+    val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
+    test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
 
-    train_loader = DataLoader(
-        train_set, collate_fn=collate_fn, **cfg.dataloader.train)
-    val_loader = DataLoader(
-        val_set, collate_fn=collate_fn, **cfg.dataloader.val)
-    test_loader = DataLoader(
-        test_set, collate_fn=collate_fn, **cfg.dataloader.test)
+    train_loader = DataLoader(train_set, **cfg.dataloader.train)
+    val_loader = DataLoader(val_set, **cfg.dataloader.val)
+    test_loader = DataLoader(test_set, **cfg.dataloader.test)
 
     # Model
     # TODO: no latent_args for now
@@ -66,7 +57,12 @@ def main(cfg):
                          callbacks=[checkpoint_callback,],
                          logger=logger)
 
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(
+        model,
+        train_loader,
+        val_loader,
+        ckpt_path="/teamspace/studios/this_studio/DiffRoll-Poly/outputs/2025-03-03/16-03-20/ClassifierFreeLatentRoll-cfdg_ddpm_x0-L15-C512-beta0.02-x_0-dilation2-l2-MAESTRO/version_1/checkpoints/last.ckpt"
+    )
     trainer.test(model, test_loader)
 
 

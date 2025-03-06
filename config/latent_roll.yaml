@@ -1,7 +1,8 @@
 val_freq: 5
-hop_length: 512
+hop_length: 128 # must be same as dac model
+# segment in seconds * sampling rate * 2 (why 2? because we are using 2 channels something about stereo)(approx 10 seconds)
 sequence_length: 327680
-sampling_rate: 16000
+sampling_rate: 16000 # must be same as dac model
 min_midi: 21
 max_midi: 108
 learning_rate: 1e-5
@@ -9,6 +10,7 @@ epochs: 2500
 download: False
 data_root: './dataset'
 pin_memory: True
+latent_dir: './dataset/maestro-dac-latents'
 
 dataloader:
     train:
@@ -32,6 +34,10 @@ dataloader:
 trainer:
     max_epochs: ${epochs}
     check_val_every_n_epoch: ${val_freq}
+    accelerator: gpu
+    devices: 1
+    strategy: auto
+    log_every_n_steps: 50
     
 modelcheckpoint:
     monitor: 'Val/diffusion_loss'
@@ -45,4 +51,4 @@ defaults:
     - latent: dac
     - model: ClassifierFreeLatentRoll
     - task: classifierfree_diffusion
-    - dataset: MAESTRO
+    - dataset: MAESTRO_latent

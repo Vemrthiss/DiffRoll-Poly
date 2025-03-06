@@ -1,8 +1,10 @@
-hop_length: 512
+hop_length: 128
 sequence_length: 327680
 sampling_rate: 16000
 data_root: './dataset'
-checkpoint_path: 'weights/attempt-1.ckpt' # will be ignored in train.py
+# checkpoint_path: 'weights/2034e-diffusion_loss0.02.ckpt' # will be ignored in train.py
+checkpoint_path: 'weights/FINAL.ckpt' # will be ignored in train.py
+latent_dir: './dataset/maestro-dac-latents'
 
 # e_x0 './outputs/2022-08-19/13-10-56/DiffRoll-ddim-L15-C512-beta0.02-ex_0-dilation1-huber-MAESTRO/version_1/checkpoints/last.ckpt'
         
@@ -17,10 +19,10 @@ task:
     frame_threshold: 0.5
     sampling:
         type: 'cfdg_ddpm_x0'
-        w: 0.5 # 0.1 0.5 1
+        # w: 0.5 # 0.1 0.5 1
+        w: 0
     
 defaults:
-    - latent: dac
+    # - latent: dac
     - model: ClassifierFreeLatentRoll
-    - task: classifierfree_diffusion
-    - dataset: MAESTRO
+    - dataset: MAESTRO_latent
