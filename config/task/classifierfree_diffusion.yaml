@@ -1,6 +1,5 @@
 lr: ${learning_rate}
-# timesteps: 200
-timesteps: 300
+timesteps: 200
 loss_type: 'l2'
 loss_keys:
     - 'diffusion_loss'

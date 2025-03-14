@@ -14,6 +14,7 @@ latent_dir: './dataset/maestro-dac-latents'
 
 dataloader:
     train:
+        # batch_size: 8
         batch_size: 16
         num_workers: 40
         shuffle: True
@@ -21,6 +22,7 @@ dataloader:
         prefetch_factor: 2
         persistent_workers: True
     val:
+        # batch_size: 8
         batch_size: 16
         num_workers: 4
         shuffle: False
@@ -39,6 +41,7 @@ trainer:
     strategy: auto
     log_every_n_steps: 50
     
+    
 modelcheckpoint:
     monitor: 'Val/diffusion_loss'
     filename: '{epoch:02d}e-diffusion_loss{Train/diffusion_loss:.2f}'
@@ -49,6 +52,6 @@ modelcheckpoint:
 
 defaults:
     - latent: dac
-    - model: ClassifierFreeLatentRoll
+    - model: LatentUnet
     - task: classifierfree_diffusion
     - dataset: MAESTRO_latent

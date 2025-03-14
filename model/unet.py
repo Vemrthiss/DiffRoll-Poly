@@ -6,8 +6,9 @@ import torch.nn.functional as F
 from inspect import isfunction
 from functools import partial
 import math
-from task.diffusion import RollDiffusion, SpecRollDiffusion
+from task.diffusion import RollDiffusion, SpecRollDiffusion, LatentRollDiffusion
 import torchaudio
+from model.utils import Normalization, LatentNormalization
 EPSILON = 1e-6
 
 
@@ -53,6 +54,32 @@ def Upsample(dim):
 
 def Downsample(dim):
     return nn.Conv2d(dim, dim, 4, 2, 1)
+
+
+def DownsampleTime(dim):
+    # kernel_size=(4,1), stride=(2,1), padding=(1,0)
+    # Explanation:
+    # - kernel_size=(4,1) => we convolve across 4 steps in time, and 1 in pitch
+    # - stride=(2,1) => move 2 steps in time each slide, but 1 step in pitch
+    # - padding=(1,0) => pad only the time axis by 1 (helps center alignment)
+    return nn.Conv2d(
+        in_channels=dim,
+        out_channels=dim,
+        kernel_size=(4, 1),
+        stride=(2, 1),
+        padding=(1, 0)
+    )
+
+
+def UpsampleTime(dim):
+    return nn.ConvTranspose2d(
+        dim,
+        dim,
+        kernel_size=(4, 1),
+        stride=(2, 1),
+        padding=(1, 0),
+        # output_padding=(1, 0)  # sometimes needed
+    )
 
 
 class SinusoidalPositionEmbeddings(nn.Module):
@@ -603,3 +630,281 @@ def sigmoid_beta_schedule(timesteps):
     beta_end = 0.02
     betas = torch.linspace(-6, 6, timesteps)
     return torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
+
+
+# --------------------- LATENT UNET ---------------------
+class LatentConvNextBlock(nn.Module):
+    """https://arxiv.org/abs/2201.03545"""
+
+    def __init__(self, dim, dim_out, *, time_emb_dim=None, mult=2, norm=True):
+        super().__init__()
+        self.mlp = (
+            nn.Sequential(nn.GELU(), nn.Linear(time_emb_dim, dim))
+            if exists(time_emb_dim)
+            else None
+        )
+
+        self.ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+
+        self.latent_ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+
+        self.net = nn.Sequential(
+            nn.GroupNorm(1, dim) if norm else nn.Identity(),
+            nn.Conv2d(dim, dim_out * mult, 3, padding=1),
+            nn.GELU(),
+            nn.GroupNorm(1, dim_out * mult),
+            nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
+        )
+
+        self.latent_net = nn.Sequential(
+            nn.GroupNorm(1, dim) if norm else nn.Identity(),
+            nn.Conv2d(dim, dim_out * mult, 3, padding=1),
+            nn.GELU(),
+            nn.GroupNorm(1, dim_out * mult),
+            nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
+        )
+
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
+
+    def forward(self, x, latents, time_emb=None):
+        # TODO: make sure this is correct
+        """
+        x:       (B, 1, T, F)
+        latents: (B, C, T, 1)
+        """
+        h = self.ds_conv(x)
+        latent_h = self.latent_ds_conv(latents)
+        if exists(self.mlp) and exists(time_emb):
+            assert exists(time_emb), "time embedding must be passed in"
+            condition = self.mlp(time_emb)
+            h = h + latent_h + rearrange(condition, "b c -> b c 1 1")
+
+        h = self.net(h)
+        latent_h = self.latent_net(latent_h)
+        return h + self.res_conv(x), latent_h
+
+
+class LatentConvNextBlockUp(nn.Module):
+    """https://arxiv.org/abs/2201.03545"""
+
+    def __init__(self, dim, dim_out, *, time_emb_dim=None, mult=2, norm=True):
+        super().__init__()
+        self.mlp = (
+            nn.Sequential(nn.GELU(), nn.Linear(time_emb_dim, dim))
+            if exists(time_emb_dim)
+            else None
+        )
+
+        self.ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+        self.latent_ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+
+        self.net = nn.Sequential(
+            nn.GroupNorm(1, dim) if norm else nn.Identity(),
+            nn.Conv2d(dim, dim_out * mult, 3, padding=1),
+            nn.GELU(),
+            nn.GroupNorm(1, dim_out * mult),
+            nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
+        )
+
+        self.latent_net = nn.Sequential(
+            nn.GroupNorm(1, dim) if norm else nn.Identity(),
+            nn.Conv2d(dim, dim_out * mult, 3, padding=1),
+            nn.GELU(),
+            nn.GroupNorm(1, dim_out * mult),
+            nn.Conv2d(dim_out * mult, dim_out, 3, padding=1),
+        )
+
+        self.res_conv = nn.Conv2d(
+            dim, dim_out, 1) if dim != dim_out else nn.Identity()
+
+    def forward(self, x, latents, time_emb=None):
+        h = self.ds_conv(x)
+        latent_h = self.latent_ds_conv(latents)
+        if exists(self.mlp) and exists(time_emb):
+            assert exists(time_emb), "time embedding must be passed in"
+            condition = self.mlp(time_emb)
+            h = h + latent_h + rearrange(condition, "b c -> b c 1 1")
+
+        h = self.net(h)
+        latent_h = self.latent_net(latent_h)
+        return h + self.res_conv(x), latent_h
+
+
+class LatentUnet(LatentRollDiffusion):
+    # Unet conditioned on dac latents
+    def __init__(
+        self,
+        dim,
+        init_dim=None,
+        out_dim=None,
+        dim_mults=(1, 2, 4, 8),
+        x_channels=1,
+        with_time_emb=True,
+        resnet_block_groups=8,
+        use_convnext=True,
+        convnext_mult=2,
+        latent_channels=96,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        init_dim = default(init_dim, dim // 3 * 2)
+        self.init_conv = nn.Conv2d(x_channels, init_dim, 7, padding=3)
+
+        # Initial layers for latents
+        self.latent_init_conv = nn.Conv2d(
+            latent_channels, init_dim, 7, padding=3)
+
+        dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
+        in_out = list(zip(dims[:-1], dims[1:]))
+
+        if use_convnext:
+            block_klass = partial(LatentConvNextBlock, mult=convnext_mult)
+            up_block_klass = partial(LatentConvNextBlockUp, mult=convnext_mult)
+        else:
+            block_klass = partial(ResnetBlock, groups=resnet_block_groups)
+
+        # time embeddings
+        if with_time_emb:
+            time_dim = dim * 4
+            self.time_mlp = nn.Sequential(
+                SinusoidalPositionEmbeddings(dim),
+                nn.Linear(dim, time_dim),
+                nn.GELU(),
+                nn.Linear(time_dim, time_dim),
+            )
+        else:
+            time_dim = None
+            self.time_mlp = None
+
+        # layers
+        self.downs = nn.ModuleList([])
+        self.ups = nn.ModuleList([])
+
+        num_resolutions = len(in_out)
+        print('num_resolutions ', num_resolutions)
+
+        for ind, (dim_in, dim_out) in enumerate(in_out):
+            is_last = ind >= (num_resolutions - 1)
+
+            self.downs.append(
+                nn.ModuleList(
+                    [
+                        block_klass(dim_in, dim_out, time_emb_dim=time_dim),
+                        block_klass(dim_out, dim_out, time_emb_dim=time_dim),
+                        Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                        DownsampleTime(
+                            dim_out) if not is_last else nn.Identity(),
+                        DownsampleTime(
+                            dim_out) if not is_last else nn.Identity(),
+                        # Downsample(dim_out) if not is_last else nn.Identity(),
+                        # Downsample(dim_out) if not is_last else nn.Identity(),
+                    ]
+                )
+            )
+
+        mid_dim = dims[-1]
+        self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
+        self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
+
+        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
+            is_last = ind >= (num_resolutions - 1)
+
+            self.ups.append(
+                nn.ModuleList(
+                    [
+                        up_block_klass(dim_out * 2, dim_in,
+                                       time_emb_dim=time_dim),
+                        block_klass(dim_in, dim_in, time_emb_dim=time_dim),
+                        Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                        UpsampleTime(dim_in) if not is_last else nn.Identity(),
+                        UpsampleTime(dim_in) if not is_last else nn.Identity(),
+                        # Upsample(dim_in) if not is_last else nn.Identity(),
+                        # Upsample(dim_in) if not is_last else nn.Identity(),
+                    ]
+                )
+            )
+
+        out_dim = default(out_dim, x_channels)
+        self.final_block = block_klass(dim, dim)
+        self.final_conv = nn.Conv2d(dim, out_dim, 1)
+        self.normalize_latents = LatentNormalization(0, 1, 'batchwise')
+        self.normalize = Normalization(0, 1, 'imagewise')
+
+    def forward(self, x, latents, time):
+        """
+        x:       (B, x_channels, T, F) noised input, where F = 88
+        latents: (B, latent_channels, T) condition
+        t:       (B,) or (B,1) for time embedding
+        """
+        # TODO: make sure the input shapes are correct
+        if latents.shape[-1] != x.shape[-2]:
+            # we use repeat interleave because latents are just 1/4 the resolution of the roll
+            latents = torch.repeat_interleave(latents, repeats=4, dim=2)
+
+        latents = self.normalize_latents(latents)
+        # reshape to (B, latent_channels, T, 1)
+        latents = latents.unsqueeze(-1)
+
+        # NOTE: this should not do anything, since we handle it above already
+        latents, x = align_timesteps(latents, x)
+
+        # x shape: [16, 1, 2560, 88]
+        # latents shape: [16, 96, 2560, 1]
+
+        latents = self.latent_init_conv(latents)
+
+        # x = (B, 1, dim, dim)
+        x = self.init_conv(x)  # (B, 18, dim, dim)
+        t = self.time_mlp(time) if exists(
+            self.time_mlp) else None  # (B, dim*4)
+        h = []
+
+        # downsample
+        counter = 0
+        for block1, block2, attn, downsample, latents_downsample in self.downs:
+            x, latents = block1(x, latents, t)
+            x, latents = block2(x, latents, t)
+            x = attn(x)
+            h.append([x, latents])
+            x = downsample(x)
+            latents = latents_downsample(latents)
+            counter += 1
+        # bottleneck
+        x, latents = self.mid_block1(x, latents, t)
+        x = self.mid_attn(x)
+        x, latents = self.mid_block2(x, latents, t)
+
+        # upsample
+        upsample_counter = 0
+        for block1, block2, attn, upsample, latent_upsample in self.ups:
+            skip_x, skip_lat = h.pop()
+            x = torch.cat((x, skip_x), dim=1)
+            latents = torch.cat((latents, skip_lat), dim=1)
+            x, latents = block1(x, latents, t)
+            x, latents = block2(x, latents, t)
+            x = attn(x)
+            x = upsample(x)
+            latents = latent_upsample(latents)
+            upsample_counter += 1
+
+        x, latents = self.final_block(x, latents)
+        x = self.final_conv(x)
+
+        # print('final forward shape check')
+        # print(x.shape) # torch.Size([8, 1, 320, 88])
+        # print(latents.shape) # torch.Size([8, 28, 320, 1])
+
+        # NOTE: output latent channel is 28,, but no need to be bacl to 96 as we are not doing anything with it after the forward pass
+
+        # NOTE: should return latents if you look at latentrolldiffusion, though not critical
+        return x, latents
+
+    # def on_after_backward(self):
+    #     print("on_after_backward enter")
+    #     for name, p in self.named_parameters():
+    #         if p.grad is None:
+    #             print(name)
+    #     print("on_after_backward exit")

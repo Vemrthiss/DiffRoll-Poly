@@ -33,13 +33,13 @@ def cosine_beta_schedule(timesteps, s=0.008):
     '''
     s is the offset
     '''
-    def f(t):
-        return torch.cos((t / timesteps + s) / (1 + s) * 0.5 * torch.pi) ** 2
-    x = torch.linspace(0, timesteps, timesteps + 1)
-    alphas_cumprod = f(x) / f(torch.tensor([0]))
+    steps = timesteps + 1
+    x = torch.linspace(0, timesteps, steps)
+    alphas_cumprod = torch.cos(
+        ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    betas = torch.clip(betas, 0.0001, 0.999)
-    return betas
+    return torch.clip(betas, 0.0001, 0.9999)
 
 
 def q_sample(x_start, t, sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod, noise=None):
@@ -1288,30 +1288,30 @@ class LatentRollDiffusion(pl.LightningModule):
             torch.save(noise_list, 'noise_list.pt')
 
             # ======== Begins animation ===========
-            t_list = torch.arange(1, self.hparams.timesteps, 5).flip(0)
-            if t_list[-1] != self.hparams.timesteps:
-                t_list = torch.cat(
-                    (t_list, torch.tensor([self.hparams.timesteps])), 0)
-            ims = []
-            fig, axes = plt.subplots(2, 4, figsize=(16, 5))
+            # t_list = torch.arange(1, self.hparams.timesteps, 5).flip(0)
+            # if t_list[-1] != self.hparams.timesteps:
+            #     t_list = torch.cat(
+            #         (t_list, torch.tensor([self.hparams.timesteps])), 0)
+            # ims = []
+            # fig, axes = plt.subplots(2, 4, figsize=(16, 5))
 
-            title = axes.flatten()[0].set_title(None, fontsize=15)
-            ax_flat = axes.flatten()
-            caxs = []
-            for ax in axes.flatten():
-                div = make_axes_locatable(ax)
-                caxs.append(div.append_axes('right', '5%', '5%'))
+            # title = axes.flatten()[0].set_title(None, fontsize=15)
+            # ax_flat = axes.flatten()
+            # caxs = []
+            # for ax in axes.flatten():
+            #     div = make_axes_locatable(ax)
+            #     caxs.append(div.append_axes('right', '5%', '5%'))
 
-            ani = animation.FuncAnimation(fig,
-                                          self.animate_sampling,
-                                          frames=tqdm(
-                                              t_list, desc='Animating'),
-                                          fargs=(fig, ax_flat, caxs,
-                                                 noise_list, ),
-                                          interval=500,
-                                          blit=False,
-                                          repeat_delay=1000)
-            ani.save('algo2.gif', dpi=80, writer='imagemagick')
+            # ani = animation.FuncAnimation(fig,
+            #                               self.animate_sampling,
+            #                               frames=tqdm(
+            #                                   t_list, desc='Animating'),
+            #                               fargs=(fig, ax_flat, caxs,
+            #                                      noise_list, ),
+            #                               interval=500,
+            #                               blit=False,
+            #                               repeat_delay=1000)
+            # ani.save('algo2.gif', dpi=80, writer='imagemagick')
             # ======== Animation saved ===========
 
         print("latentrolldiffusion")
@@ -1525,8 +1525,11 @@ class LatentRollDiffusion(pl.LightningModule):
         device = roll.device
         latents = batch["dac_latents"]
 
-        t = torch.randint(0, self.hparams.timesteps,
-                          (batch_size,), device=device).long()
+        # note, the high aka t=200 is exclusive, so goes from 0 to 199
+        # t = torch.randint(0, self.hparams.timesteps,
+        #                   (batch_size,), device=device).long()
+
+        t = sample_timesteps(batch_size, self.hparams.timesteps)
 
         # EXPERIMENTAL: try weighted sampling
         # if random.random() < 0.5:
@@ -1588,7 +1591,7 @@ class LatentRollDiffusion(pl.LightningModule):
         noise = torch.randn_like(roll)
         # ------- DEBUG-------
         # batch_size = batch["frame"].shape[0]
-        # fixed_t = 200
+        # fixed_t = 150
         # t = torch.full((batch_size,), fixed_t-1, device=roll.device).long()
         # x_t = q_sample(
         #     x_start=roll,
@@ -2097,3 +2100,21 @@ def save_midi(path, pitches, intervals, velocities):
         last_tick = current_tick
 
     file.save(path)
+
+
+def sample_timesteps(batch_size, T, alpha=1.5):
+    """
+    alpha > 1 => sample more from high t
+    alpha = 1 => uniform
+    alpha < 1 => sample more from low t
+    """
+    # t ~ p(t) = c * (t/T)^alpha
+    # We'll do a discrete distribution
+    # e.g. create a pmf ~ (i/T)^alpha for i in [0..T-1].
+
+    i = torch.arange(T, dtype=torch.float)  # 0..T-1
+    pmf = (i / (T-1) + 1e-8) ** alpha
+    pmf = pmf / pmf.sum()
+    # now pmf is shape (T,)
+    # sample from it, return tensor of same (batch_size,)
+    return torch.multinomial(pmf, batch_size, replacement=True)

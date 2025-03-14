@@ -1,0 +1,10 @@
+name: 'LatentUnet'
+args:
+    dim: 56
+    x_channels: 1
+    # spec just until 4
+    dim_mults:
+        - 1
+        - 2
+        - 4
+    latent_channels: 96

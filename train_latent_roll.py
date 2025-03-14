@@ -10,16 +10,21 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
 import AudioLoader.music.amt as MusicDataset
+from AudioLoader.music.amt import ChunkedDataset
 
+num_chunks=16
 
 @hydra.main(config_path="config", config_name="latent_roll")
 def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
     cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
-    train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
-    val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
-    test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    # train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
+    # val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
+    # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    train_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)), num_chunks=num_chunks)
+    val_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)), num_chunks=num_chunks)
+    test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)), num_chunks=num_chunks)
 
     train_loader = DataLoader(train_set, **cfg.dataloader.train)
     val_loader = DataLoader(val_set, **cfg.dataloader.val)
@@ -47,6 +52,10 @@ def main(cfg):
                f"p={cfg.model.args.spec_dropout}-k={cfg.model.args.kernel_size}-" + \
                f"dia={cfg.model.args.dilation_base}-{cfg.model.args.dilation_bound}-" + \
                f"{cfg.dataset.name}"
+    elif cfg.model.name == 'LatentUnet':
+        name = f"{cfg.model.name}-" + \
+               f"{cfg.task.sampling.type}-w={cfg.task.sampling.w}-" + \
+               f"{cfg.dataset.name}"
     else:
         name = f"{cfg.model.name}-{cfg.task.sampling.type}-L{cfg.model.args.residual_layers}-C{cfg.model.args.residual_channels}-" + \
                f"beta{cfg.task.beta_end}-{cfg.task.training.mode}-" + \
@@ -60,9 +69,7 @@ def main(cfg):
     trainer.fit(
         model,
         train_loader,
-        val_loader,
-        ckpt_path="/teamspace/studios/this_studio/DiffRoll-Poly/outputs/2025-03-03/16-03-20/ClassifierFreeLatentRoll-cfdg_ddpm_x0-L15-C512-beta0.02-x_0-dilation2-l2-MAESTRO/version_1/checkpoints/last.ckpt"
-    )
+        val_loader)
     trainer.test(model, test_loader)
 
 

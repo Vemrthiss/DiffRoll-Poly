@@ -8,14 +8,17 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import model as Model
 
 import AudioLoader.music.amt as MusicDataset
+from AudioLoader.music.amt import ChunkedDataset
 
+num_chunks=16
 
 @hydra.main(config_path="config", config_name="test_latent_roll")
 def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
     cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
-    test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)), num_chunks=num_chunks)
     test_loader = DataLoader(test_set, batch_size=4)
 
     # Model
