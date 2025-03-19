@@ -51,7 +51,8 @@ modelcheckpoint:
     auto_insert_metric_name: False
 
 defaults:
+    - curriculum: curriculum
     - latent: dac
     - model: LatentUnet
-    - task: classifierfree_diffusion
+    - task: diffusion
     - dataset: MAESTRO_latent

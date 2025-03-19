@@ -1,0 +1,10 @@
+# Curriculum learning configuration
+curriculum_enabled: true  # Enable curriculum learning
+curriculum_alpha: -0.5  # Power for the probability distribution. Negative numbers favour larger T
+
+# for progressive curriculum
+curriculum_start_t_ratio: 0.05  # Start with 5% of timesteps
+curriculum_mid_t_ratio: 0.3     # Intermediate target of 30% timesteps
+# Phase timing parameters
+curriculum_early_phase_ratio: 0.3  # Spend 30% of epochs in early phase
+curriculum_mid_phase_ratio: 0.6

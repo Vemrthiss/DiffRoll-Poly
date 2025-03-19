@@ -20,7 +20,7 @@
 # For latent unet
 python train_latent_roll.py \
     dataloader.train.num_workers=4 \
-    epochs=2500 \
+    epochs=300 \
     download=False \
     trainer.devices=4 \
     trainer.strategy=ddp_find_unused_parameters_true \

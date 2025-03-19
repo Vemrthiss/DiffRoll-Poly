@@ -557,7 +557,6 @@ class SpecRollDiffusion(pl.LightningModule):
 #             self.log("Test/Note_F1", f)
 #         self.log("Test/Frame_F1", frame_f1)
 
-
     def predict_step(self, batch, batch_idx):
         noise = batch[0]
         waveform = batch[1]
@@ -1172,10 +1171,21 @@ class LatentRollDiffusion(pl.LightningModule):
                  training,
                  sampling,
                  debug=False,
-                 generation_filter=0.0):
+                 generation_filter=0.0,
+                 curriculum_learning=True,
+                 curriculum_alpha=1.5,
+                 curriculum_min_t_ratio=0.1,
+                 curriculum_full_t_ratio=0.5
+                 ):
         super().__init__()
 
         self.save_hyperparameters()
+
+        # Register curriculum learning parameters
+        self.curriculum_learning = curriculum_learning
+        self.curriculum_alpha = curriculum_alpha
+        self.curriculum_min_t_ratio = curriculum_min_t_ratio
+        self.curriculum_full_t_ratio = curriculum_full_t_ratio
 
         # define beta schedule
         # self.betas = linear_beta_schedule(
@@ -1529,7 +1539,17 @@ class LatentRollDiffusion(pl.LightningModule):
         # t = torch.randint(0, self.hparams.timesteps,
         #                   (batch_size,), device=device).long()
 
-        t = sample_timesteps(batch_size, self.hparams.timesteps)
+        if self.curriculum_learning and self.trainer is not None:
+            t = curriculum_sample_timesteps(
+                batch_size,
+                self.hparams.timesteps,
+                self.trainer.current_epoch,
+                self.trainer.max_epochs,
+                self.curriculum_alpha,
+                self.curriculum_min_t_ratio,
+                self.curriculum_full_t_ratio)
+        else:
+            t = sample_timesteps(batch_size, self.hparams.timesteps)
 
         # EXPERIMENTAL: try weighted sampling
         # if random.random() < 0.5:
@@ -2118,3 +2138,49 @@ def sample_timesteps(batch_size, T, alpha=1.5):
     # now pmf is shape (T,)
     # sample from it, return tensor of same (batch_size,)
     return torch.multinomial(pmf, batch_size, replacement=True)
+
+
+def curriculum_sample_timesteps(batch_size,
+                                T,
+                                current_epoch,
+                                max_epochs,
+                                alpha=1.0,
+                                min_t_ratio=0.1,
+                                full_t_ratio=0.5):
+    """
+    Sample timesteps with curriculum learning - gradually increasing the maximum timestep
+    as training progresses.
+
+    Args:
+        batch_size: Number of timesteps to sample
+        T: Maximum number of timesteps
+        current_epoch: Current training epoch
+        max_epochs: Maximum number of training epochs
+        min_t_ratio: Minimum ratio of T to start with (e.g., 0.1 means start with max_t = 0.1*T)
+        alpha: Power for the probability distribution:
+               - positive alpha: favors smaller timesteps (e.g., 1.5)
+               - negative alpha: favors larger timesteps (e.g., -1.5)
+               - zero: uniform distribution
+
+    Returns:
+        Tensor of sampled timesteps
+    """
+    progress = min(current_epoch / (max_epochs * full_t_ratio), 1.0)
+    max_t = int(min_t_ratio * T + progress * (T - min_t_ratio * T))
+
+    # Ensure max_t is at least 1
+    max_t = max(1, max_t)
+
+    # Sample timesteps with probability distribution based on alpha
+    # - positive alpha: favors smaller timesteps
+    # - negative alpha: favors larger timesteps
+    # - zero: uniform distribution
+    t_values = torch.linspace(1, max_t, max_t)
+    if alpha == 0:
+        # Uniform distribution
+        probs = torch.ones_like(t_values)
+    else:
+        probs = t_values ** (-alpha)
+
+    probs = probs / probs.sum()
+    return torch.multinomial(probs, batch_size, replacement=True).long()

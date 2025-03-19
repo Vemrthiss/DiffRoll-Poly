@@ -783,7 +783,6 @@ class LatentUnet(LatentRollDiffusion):
         self.ups = nn.ModuleList([])
 
         num_resolutions = len(in_out)
-        print('num_resolutions ', num_resolutions)
 
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
@@ -806,8 +805,12 @@ class LatentUnet(LatentRollDiffusion):
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
-        self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        self.mid_attn1 = Residual(
+            PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
+        self.mid_attn2 = Residual(
+            PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
         self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
+        self.mid_block3 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
@@ -872,10 +875,13 @@ class LatentUnet(LatentRollDiffusion):
             x = downsample(x)
             latents = latents_downsample(latents)
             counter += 1
+
         # bottleneck
         x, latents = self.mid_block1(x, latents, t)
-        x = self.mid_attn(x)
+        x = self.mid_attn1(x)
+        x = self.mid_attn2(x)
         x, latents = self.mid_block2(x, latents, t)
+        x, latents = self.mid_block3(x, latents, t)
 
         # upsample
         upsample_counter = 0

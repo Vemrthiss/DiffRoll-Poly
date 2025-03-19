@@ -10,7 +10,7 @@ import model as Model
 import AudioLoader.music.amt as MusicDataset
 from AudioLoader.music.amt import ChunkedDataset
 
-num_chunks=16
+num_chunks=4
 
 @hydra.main(config_path="config", config_name="test_latent_roll")
 def main(cfg):
@@ -19,7 +19,7 @@ def main(cfg):
 
     # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
     test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)), num_chunks=num_chunks)
-    test_loader = DataLoader(test_set, batch_size=4)
+    test_loader = DataLoader(test_set, batch_size=8) # was batch size 4
 
     # Model
     if cfg.task.frame_threshold != None and cfg.task.sampling.type != None:
@@ -43,7 +43,12 @@ def main(cfg):
                f"{cfg.task.sampling.type}-{cfg.dataset.name}"
 
     logger = TensorBoardLogger(save_dir=".", version=1, name=name)
-    trainer = pl.Trainer(logger=logger)
+    trainer = pl.Trainer(
+            logger=logger,
+            devices=4,
+            strategy='ddp',
+            log_every_n_steps=10
+        )
 
     trainer.test(model, test_loader)
 

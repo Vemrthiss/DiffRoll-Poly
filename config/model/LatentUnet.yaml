@@ -7,4 +7,5 @@ args:
         - 1
         - 2
         - 4
+        - 8
     latent_channels: 96

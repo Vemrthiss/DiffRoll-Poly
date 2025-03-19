@@ -1,0 +1,5 @@
+# Curriculum learning configuration
+curriculum_enabled: true  # Enable curriculum learning
+curriculum_alpha: -1.0  # Power for the probability distribution. Negative numbers favour larger T
+curriculum_min_t_ratio: 0.3  # Start with x% of the maximum timesteps
+curriculum_full_t_ratio: 0.7 # this means that at x% EPOCHS, start to sample to full range of T's

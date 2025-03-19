@@ -6,13 +6,14 @@ import torch.nn.functional as F
 from torch.optim import Adam
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 
 import AudioLoader.music.amt as MusicDataset
 from AudioLoader.music.amt import ChunkedDataset
 
-num_chunks=16
+num_chunks = 16
+
 
 @hydra.main(config_path="config", config_name="latent_roll")
 def main(cfg):
@@ -22,9 +23,12 @@ def main(cfg):
     # train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
     # val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
     # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
-    train_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)), num_chunks=num_chunks)
-    val_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)), num_chunks=num_chunks)
-    test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)), num_chunks=num_chunks)
+    train_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+        **cfg.dataset.train)), num_chunks=num_chunks)
+    val_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+        **cfg.dataset.val)), num_chunks=num_chunks)
+    test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+        **cfg.dataset.test)), num_chunks=num_chunks)
 
     train_loader = DataLoader(train_set, **cfg.dataloader.train)
     val_loader = DataLoader(val_set, **cfg.dataloader.val)
@@ -34,7 +38,23 @@ def main(cfg):
     # TODO: no latent_args for now
     # model = getattr(Model, cfg.model.name)(**cfg.model.args,
     #                                        latent_args=cfg.latent.args, **cfg.task)
-    model = getattr(Model, cfg.model.name)(**cfg.model.args, **cfg.task)
+
+    # Add curriculum learning parameters if they exist in config
+    curriculum_params = {}
+    if hasattr(cfg, 'curriculum') and cfg.curriculum.curriculum_enabled:
+        curriculum_params = {
+            'curriculum_learning': cfg.curriculum.curriculum_enabled,
+            'curriculum_alpha': cfg.curriculum.curriculum_alpha,
+            'curriculum_min_t_ratio': cfg.curriculum.curriculum_min_t_ratio,
+            'curriculum_full_t_ratio': cfg.curriculum.curriculum_full_t_ratio
+            # 'curriculum_start_t_ratio': cfg.curriculum.curriculum_start_t_ratio,
+            # 'curriculum_mid_t_ratio': cfg.curriculum.curriculum_mid_t_ratio,
+            # 'curriculum_early_phase_ratio': cfg.curriculum.curriculum_early_phase_ratio,
+            # 'curriculum_mid_phase_ratio': cfg.curriculum.curriculum_mid_phase_ratio,
+        }
+
+    model = getattr(Model, cfg.model.name)(
+        **cfg.model.args, **cfg.task, **curriculum_params)
 
     optimizer = Adam(model.parameters(), lr=1e-3)
 
@@ -54,7 +74,7 @@ def main(cfg):
                f"{cfg.dataset.name}"
     elif cfg.model.name == 'LatentUnet':
         name = f"{cfg.model.name}-" + \
-               f"{cfg.task.sampling.type}-w={cfg.task.sampling.w}-" + \
+               f"{cfg.task.sampling.type}-" + \
                f"{cfg.dataset.name}"
     else:
         name = f"{cfg.model.name}-{cfg.task.sampling.type}-L{cfg.model.args.residual_layers}-C{cfg.model.args.residual_channels}-" + \

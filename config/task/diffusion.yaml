@@ -1,15 +1,11 @@
 lr: ${learning_rate}
-timesteps: 500
-loss_type: 'huber'
+timesteps: 200
+loss_type: 'l2'
 loss_keys:
     - 'diffusion_loss'
-frame_threshold: 0.6
+frame_threshold: 0.5
 beta_start: 0.0001
-beta_end: 0.05
-norm_args:
-- 0
-- 1
-- 'imagewise'
+beta_end: 0.999
 training:
     mode: 'x_0' # either 'x_0' or epsilon
 sampling:

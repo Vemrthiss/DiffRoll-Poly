@@ -3,7 +3,8 @@ sequence_length: 327680
 sampling_rate: 16000
 data_root: './dataset'
 # checkpoint_path: 'weights/2034e-diffusion_loss0.02.ckpt' # will be ignored in train.py
-checkpoint_path: 'weights/latent-unet-dim56.ckpt' # will be ignored in train.py
+# checkpoint_path: 'weights/latent-unet-attempt-3.ckpt' # will be ignored in train.py
+checkpoint_path: 'weights/latent-unet-test.ckpt' # will be ignored in train.py
 latent_dir: './dataset/maestro-dac-latents'
 
 # e_x0 './outputs/2022-08-19/13-10-56/DiffRoll-ddim-L15-C512-beta0.02-ex_0-dilation1-huber-MAESTRO/version_1/checkpoints/last.ckpt'
