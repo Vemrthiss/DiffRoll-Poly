@@ -805,10 +805,12 @@ class LatentUnet(LatentRollDiffusion):
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
-        self.mid_attn1 = Residual(
-            PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
-        self.mid_attn2 = Residual(
-            PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
+        self.mid_attn1 = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        self.mid_attn2 = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        # self.mid_attn1 = Residual(
+        #     PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
+        # self.mid_attn2 = Residual(
+        #     PreNorm(mid_dim, Attention(mid_dim, heads=8, dim_head=64)))
         self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
         self.mid_block3 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
 

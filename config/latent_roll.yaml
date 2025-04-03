@@ -15,7 +15,7 @@ latent_dir: './dataset/maestro-dac-latents'
 dataloader:
     train:
         # batch_size: 8
-        batch_size: 16
+        batch_size: 32
         num_workers: 40
         shuffle: True
         pin_memory: ${pin_memory}
@@ -23,7 +23,7 @@ dataloader:
         persistent_workers: True
     val:
         # batch_size: 8
-        batch_size: 16
+        batch_size: 32
         num_workers: 4
         shuffle: False
         pin_memory: ${pin_memory}
@@ -51,8 +51,8 @@ modelcheckpoint:
     auto_insert_metric_name: False
 
 defaults:
-    - curriculum: curriculum
+    # - curriculum: curriculum
     - latent: dac
-    - model: LatentUnet
+    - model: ClassifierFreeLatentRoll
     - task: diffusion
     - dataset: MAESTRO_latent

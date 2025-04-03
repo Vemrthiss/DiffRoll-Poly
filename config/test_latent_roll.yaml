@@ -2,9 +2,8 @@ hop_length: 128
 sequence_length: 327680
 sampling_rate: 16000
 data_root: './dataset'
-# checkpoint_path: 'weights/2034e-diffusion_loss0.02.ckpt' # will be ignored in train.py
-# checkpoint_path: 'weights/latent-unet-attempt-3.ckpt' # will be ignored in train.py
-checkpoint_path: 'weights/latent-unet-test.ckpt' # will be ignored in train.py
+checkpoint_path: '/teamspace/studios/this_studio/DiffRoll-Poly/outputs/2025-03-15/08-46-23/LatentUnet-cfdg_ddpm_x0-w=0-MAESTRO/version_1/checkpoints/last.ckpt' # will be ignored in train.py
+# checkpoint_path: '/teamspace/studios/this_studio/DiffRoll-Poly/outputs/2025-03-27/16-59-43/ClassifierFreeLatentRoll-ddpm_x0-L15-C512-beta0.02-x_0-dilation2-l2-MAESTRO/version_1/checkpoints/5409e-diffusion_loss0.00.ckpt'
 latent_dir: './dataset/maestro-dac-latents'
 
 # e_x0 './outputs/2022-08-19/13-10-56/DiffRoll-ddim-L15-C512-beta0.02-ex_0-dilation1-huber-MAESTRO/version_1/checkpoints/last.ckpt'
@@ -17,13 +16,15 @@ dataloader:
         pin_memory: True
         
 task:
-    frame_threshold: 0.5
+    frame_threshold: 0.2 # 0.5
     sampling:
         type: 'ddpm_x0' # cfdg_ddpm_x0
         # w: 0.5 # 0.1 0.5 1
         w: 0
+    timesteps: 200
     
 defaults:
     # - latent: dac
+    # - model: ClassifierFreeLatentRoll
     - model: LatentUnet
     - dataset: MAESTRO_latent

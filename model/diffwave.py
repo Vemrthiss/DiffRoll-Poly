@@ -913,7 +913,7 @@ class ClassifierFreeLatentRoll(LatentRollDiffusion):
         return x.transpose(1, 2).unsqueeze(1), dac_latents
 
     # we can use masked value -1 because normalized latents are between 0 and 1
-    # TODO: but what does -1 REALLY represent? In the case of cmel, -1 is used because 0 means silence
+    # TODO: but what does -1 REALY represent? In the case of cmel, -1 is used because 0 means silence
     # what does a 0 or 1 mean for latents?
     def fixed_dropout(self, x, p, masked_value=-1):
         mask = torch.distributions.Bernoulli(

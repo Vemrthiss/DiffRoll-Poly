@@ -20,15 +20,15 @@ def main(cfg):
     cfg.data_root = to_absolute_path(cfg.data_root)
     cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
-    # train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
-    # val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
-    # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
-    train_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
-        **cfg.dataset.train)), num_chunks=num_chunks)
-    val_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
-        **cfg.dataset.val)), num_chunks=num_chunks)
-    test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
-        **cfg.dataset.test)), num_chunks=num_chunks)
+    train_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.train)
+    val_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.val)
+    test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    # train_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+    #     **cfg.dataset.train)), num_chunks=num_chunks)
+    # val_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+    #     **cfg.dataset.val)), num_chunks=num_chunks)
+    # test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(
+    #     **cfg.dataset.test)), num_chunks=num_chunks)
 
     train_loader = DataLoader(train_set, **cfg.dataloader.train)
     val_loader = DataLoader(val_set, **cfg.dataloader.val)

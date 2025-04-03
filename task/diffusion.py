@@ -1172,7 +1172,7 @@ class LatentRollDiffusion(pl.LightningModule):
                  sampling,
                  debug=False,
                  generation_filter=0.0,
-                 curriculum_learning=True,
+                 curriculum_learning=False,
                  curriculum_alpha=1.5,
                  curriculum_min_t_ratio=0.1,
                  curriculum_full_t_ratio=0.5
@@ -1214,7 +1214,7 @@ class LatentRollDiffusion(pl.LightningModule):
         self.alphas = alphas
 
     def training_step(self, batch, batch_idx):
-        losses, _ = self.step(batch)
+        losses, _ = self.step(batch, batch_idx)
 
         # calculating total loss based on keys given
         total_loss = 0
@@ -1225,7 +1225,7 @@ class LatentRollDiffusion(pl.LightningModule):
         return total_loss
 
     def validation_step(self, batch, batch_idx):
-        losses, tensors = self.step(batch)
+        losses, tensors = self.step(batch, batch_idx)
         total_loss = 0
         for k in self.hparams.loss_keys:
             total_loss += losses[k]
@@ -1267,6 +1267,8 @@ class LatentRollDiffusion(pl.LightningModule):
                     fig, ax = plt.subplots(2, 2)
                     for idx, j in enumerate(noise_npy):
                         # j (1, T, F)
+                        if idx >= 4:
+                            break
                         ax.flatten()[idx].imshow(
                             j[0].T, aspect='auto', origin='lower')
                         self.logger.experiment.add_figure(
@@ -1370,21 +1372,21 @@ class LatentRollDiffusion(pl.LightningModule):
                 i_ref, p_ref, i_est, p_est, offset_ratio=None)
 
             if batch_idx == 0:
-                torchaudio.save(f'audio_{sample_idx}.mp3',
-                                batch['audio'][sample_idx].unsqueeze(0).cpu(),
-                                sample_rate=16000)
+                # torchaudio.save(f'audio_{sample_idx}.mp3',
+                #                 batch['audio'][sample_idx].unsqueeze(0).cpu(),
+                #                 sample_rate=16000)
                 # sample_rate=self.hparams.spec_args.sample_rate)
-                clean_notes = (i_est[:, 1]-i_est[:, 0]
-                               ) > self.hparams.generation_filter
+                # clean_notes = (i_est[:, 1]-i_est[:, 0]
+                #                ) > self.hparams.generation_filter
 
-                save_midi(os.path.join('./', f'clean_midi_{sample_idx}.mid'),
-                          p_est[clean_notes],
-                          i_est[clean_notes],
-                          [127]*len(p_est))
-                save_midi(os.path.join('./', f'raw_midi_{sample_idx}.mid'),
-                          p_est,
-                          i_est,
-                          [127]*len(p_est))
+                # save_midi(os.path.join('./', f'clean_midi_{sample_idx}.mid'),
+                #           p_est[clean_notes],
+                #           i_est[clean_notes],
+                #           [127]*len(p_est))
+                # save_midi(os.path.join('./', f'raw_midi_{sample_idx}.mid'),
+                #           p_est,
+                #           i_est,
+                #           [127]*len(p_est))
 
                 self.log("Test/Note_F1", f)
 
@@ -1527,7 +1529,7 @@ class LatentRollDiffusion(pl.LightningModule):
             f"{tag}", fig, global_step=self.current_epoch)
         plt.close()
 
-    def step(self, batch):
+    def step(self, batch, batch_idx):
         # batch["frame"] (B, T, 88)
         # batch["audio"] (B, L)
         batch_size = batch["frame"].shape[0]
@@ -1536,20 +1538,24 @@ class LatentRollDiffusion(pl.LightningModule):
         latents = batch["dac_latents"]
 
         # note, the high aka t=200 is exclusive, so goes from 0 to 199
-        # t = torch.randint(0, self.hparams.timesteps,
-        #                   (batch_size,), device=device).long()
+        t = torch.randint(0, self.hparams.timesteps,
+                          (batch_size,), device=device).long()
 
-        if self.curriculum_learning and self.trainer is not None:
-            t = curriculum_sample_timesteps(
-                batch_size,
-                self.hparams.timesteps,
-                self.trainer.current_epoch,
-                self.trainer.max_epochs,
-                self.curriculum_alpha,
-                self.curriculum_min_t_ratio,
-                self.curriculum_full_t_ratio)
-        else:
-            t = sample_timesteps(batch_size, self.hparams.timesteps)
+        # if batch_idx == 0:
+        #     self.visualize_forward_diffusion(
+        #         roll[0], save_path='/teamspace/studios/this_studio/DiffRoll-Poly/forward_diffusion.png')
+
+        # if self.curriculum_learning and self.trainer is not None:
+        #     t = curriculum_sample_timesteps(
+        #         batch_size,
+        #         self.hparams.timesteps,
+        #         self.trainer.current_epoch,
+        #         self.trainer.max_epochs,
+        #         self.curriculum_alpha,
+        #         self.curriculum_min_t_ratio,
+        #         self.curriculum_full_t_ratio).to(device)
+        # else:
+        #     t = sample_timesteps(batch_size, self.hparams.timesteps, alpha=0.0)
 
         # EXPERIMENTAL: try weighted sampling
         # if random.random() < 0.5:
@@ -1933,6 +1939,51 @@ class LatentRollDiffusion(pl.LightningModule):
         row1_txt = ax_flat[0].text(-400, 45, f'Gaussian N(0,1)')
         row2_txt = ax_flat[4].text(-300, 45, 'x_{t-1}')
 
+    def visualize_forward_diffusion(self, clean_roll, save_path=None):
+        """Visualize the forward diffusion process by showing how a clean piano roll
+        gradually becomes noised as t increases.
+
+        Args:
+            clean_roll: Clean piano roll tensor (1, T, F)
+            save_path: Optional path to save the figure
+        """
+        # Create figure with subplots
+        fig, axes = plt.subplots(3, 3, figsize=(15, 10))
+        axes = axes.flatten()
+
+        # Show clean roll at t=0
+        im = axes[0].imshow(clean_roll[0].T.cpu(),
+                            aspect='auto', origin='lower')
+        axes[0].set_title('t=0 (Clean)')
+
+        # Show noised versions at different timesteps
+        timesteps = [124, 249, 374, 499, 624, 749, 874, 999]
+        for idx, t in enumerate(timesteps, 1):
+            # Create noise
+            noise = torch.randn_like(clean_roll)
+
+            # Sample noised version using q_sample
+            noised_roll = q_sample(
+                x_start=clean_roll,
+                t=torch.tensor([t]).to(clean_roll.device),
+                sqrt_alphas_cumprod=self.sqrt_alphas_cumprod,
+                sqrt_one_minus_alphas_cumprod=self.sqrt_one_minus_alphas_cumprod,
+                noise=noise
+            )
+
+            # Plot
+            im = axes[idx].imshow(noised_roll[0].T.cpu(),
+                                  aspect='auto', origin='lower')
+            axes[idx].set_title(f't={t}')
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
+
 
 # functions for roll2midi
 
@@ -2122,11 +2173,11 @@ def save_midi(path, pitches, intervals, velocities):
     file.save(path)
 
 
-def sample_timesteps(batch_size, T, alpha=1.5):
+def sample_timesteps(batch_size, T, alpha=1.0):
     """
-    alpha > 1 => sample more from high t
-    alpha = 1 => uniform
-    alpha < 1 => sample more from low t
+    alpha > 0 => sample more from high t
+    alpha = 0 => uniform
+    alpha < 0 => sample more from low t
     """
     # t ~ p(t) = c * (t/T)^alpha
     # We'll do a discrete distribution

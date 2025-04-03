@@ -18,13 +18,14 @@ def main(cfg):
     cfg.latent_dir = to_absolute_path(cfg.latent_dir)
 
     # test_set = getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)
+    # test_loader = DataLoader(test_set, batch_size=4)
     test_set = ChunkedDataset((getattr(MusicDataset, cfg.dataset.name)(**cfg.dataset.test)), num_chunks=num_chunks)
-    test_loader = DataLoader(test_set, batch_size=8) # was batch size 4
+    test_loader = DataLoader(test_set, batch_size=4) # was batch size 4
 
     # Model
     if cfg.task.frame_threshold != None and cfg.task.sampling.type != None:
         model = getattr(Model, cfg.model.name).load_from_checkpoint(to_absolute_path(
-            cfg.checkpoint_path), frame_threshold=cfg.task.frame_threshold, sampling=cfg.task.sampling)
+            cfg.checkpoint_path), frame_threshold=cfg.task.frame_threshold, sampling=cfg.task.sampling, timesteps=cfg.task.timesteps)
     elif cfg.task.frame_threshold == None and cfg.task.sampling.type != None:
         model = getattr(Model, cfg.model.name).load_from_checkpoint(
             to_absolute_path(cfg.checkpoint_path), sampling=cfg.task.sampling)
