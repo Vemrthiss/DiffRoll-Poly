@@ -259,8 +259,9 @@ class SpecRollDiffusion(pl.LightningModule):
 
         # define beta schedule
         # beta is variance
-        self.betas = linear_beta_schedule(
-            beta_start, beta_end, timesteps=timesteps)
+        # self.betas = linear_beta_schedule(
+        #     beta_start, beta_end, timesteps=timesteps)
+        self.betas = cosine_beta_schedule(timesteps)
 
         # define alphas
         alphas = 1. - self.betas
@@ -388,30 +389,30 @@ class SpecRollDiffusion(pl.LightningModule):
             torch.save(noise_list, 'noise_list.pt')
 
             # ======== Begins animation ===========
-            t_list = torch.arange(1, self.hparams.timesteps, 5).flip(0)
-            if t_list[-1] != self.hparams.timesteps:
-                t_list = torch.cat(
-                    (t_list, torch.tensor([self.hparams.timesteps])), 0)
-            ims = []
-            fig, axes = plt.subplots(2, 4, figsize=(16, 5))
+            # t_list = torch.arange(1, self.hparams.timesteps, 5).flip(0)
+            # if t_list[-1] != self.hparams.timesteps:
+            #     t_list = torch.cat(
+            #         (t_list, torch.tensor([self.hparams.timesteps])), 0)
+            # ims = []
+            # fig, axes = plt.subplots(2, 4, figsize=(16, 5))
 
-            title = axes.flatten()[0].set_title(None, fontsize=15)
-            ax_flat = axes.flatten()
-            caxs = []
-            for ax in axes.flatten():
-                div = make_axes_locatable(ax)
-                caxs.append(div.append_axes('right', '5%', '5%'))
+            # title = axes.flatten()[0].set_title(None, fontsize=15)
+            # ax_flat = axes.flatten()
+            # caxs = []
+            # for ax in axes.flatten():
+            #     div = make_axes_locatable(ax)
+            #     caxs.append(div.append_axes('right', '5%', '5%'))
 
-            ani = animation.FuncAnimation(fig,
-                                          self.animate_sampling,
-                                          frames=tqdm(
-                                              t_list, desc='Animating'),
-                                          fargs=(fig, ax_flat, caxs,
-                                                 noise_list, ),
-                                          interval=500,
-                                          blit=False,
-                                          repeat_delay=1000)
-            ani.save('algo2.gif', dpi=80, writer='imagemagick')
+            # ani = animation.FuncAnimation(fig,
+            #                               self.animate_sampling,
+            #                               frames=tqdm(
+            #                                   t_list, desc='Animating'),
+            #                               fargs=(fig, ax_flat, caxs,
+            #                                      noise_list, ),
+            #                               interval=500,
+            #                               blit=False,
+            #                               repeat_delay=1000)
+            # ani.save('algo2.gif', dpi=80, writer='imagemagick')
             # ======== Animation saved ===========
 
         print("specrolldiffusion")
@@ -829,11 +830,28 @@ class SpecRollDiffusion(pl.LightningModule):
         self.inner_loop.refresh()
         self.inner_loop.reset()
 
-        noise = torch.randn_like(roll)
-        noise_list = []
-        noise_list.append((noise, self.hparams.timesteps))
+        # noise = torch.randn_like(roll)
+        # noise_list = []
+        # noise_list.append((noise, self.hparams.timesteps))
 
-        for t_index in reversed(range(0, self.hparams.timesteps)):
+        # ------- DEBUG-------
+        noise = torch.randn_like(roll)
+        batch_size = batch["frame"].shape[0]
+        fixed_t = 175
+        t = torch.full((batch_size,), fixed_t-1, device=roll.device).long()
+        x_t = q_sample(
+            x_start=roll,
+            t=t,
+            sqrt_alphas_cumprod=self.sqrt_alphas_cumprod,
+            sqrt_one_minus_alphas_cumprod=self.sqrt_one_minus_alphas_cumprod,
+            noise=noise)
+        noise_list = []
+        noise = x_t
+        noise_list.append((noise, fixed_t))
+        # ------- DEBUG-------
+
+        # for t_index in reversed(range(0, self.hparams.timesteps)):
+        for t_index in reversed(range(0, fixed_t)):
             if self.hparams.debug == True:
                 noise, spec = self.reverse_diffusion(noise, roll, t_index)
             else:

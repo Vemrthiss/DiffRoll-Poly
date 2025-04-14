@@ -697,7 +697,9 @@ class LatentConvNextBlockUp(nn.Module):
         )
 
         self.ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
-        self.latent_ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+        # self.latent_ds_conv = nn.Conv2d(dim, dim, 7, padding=3, groups=dim)
+        # after correction from specunet:
+        self.latent_ds_conv = nn.Conv2d(dim//3, dim, 7, padding=3, groups=1)
 
         self.net = nn.Sequential(
             nn.GroupNorm(1, dim) if norm else nn.Identity(),

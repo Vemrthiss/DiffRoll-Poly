@@ -18,11 +18,12 @@ task:
     frame_threshold: 0.5
     sampling:
         type: 'cfdg_ddpm_x0'
-        w: 0.5 # 0.1 0.5 1
+        # w: 0.5 # 0.1 0.5 1
+        w: 0
         
 trainer:
     gpus: ${gpus}
     
 defaults:
     - model: ClassifierFreeDiffRoll
-    - dataset: MAPS
+    - dataset: MAESTRO
