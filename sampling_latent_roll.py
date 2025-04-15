@@ -13,8 +13,7 @@ from utils.custom_dataset import Custom
 
 from omegaconf import OmegaConf
 import warnings
-
-from utils.custom_latent_dataset import CustomLatentDataset
+import torch.multiprocessing as mp
 
 
 @hydra.main(config_path="config", config_name="sampling_latent_roll")
@@ -24,44 +23,44 @@ def main(cfg):
     S = cfg.dataset.num_samples  # choose the number of samples to generate
     x = torch.randn(S, 1, 640, 88)
 
-    if cfg.task.sampling.type == 'inpainting_ddpm_x0':
-        if cfg.dataset.name in ['MAESTRO', 'MAPS']:
-            dataset = getattr(MusicDataset, cfg.dataset.name)(
-                **OmegaConf.to_container(cfg.dataset.args, resolve=True))
-            waveform = torch.empty(S, cfg.dataset.args.sequence_length)
-            roll_labels = torch.empty(S, 640, 88)
-            for i in range(S):
-                sample = dataset[i]
-                waveform[i] = sample['audio']
-                roll_labels[i] = sample['frame']
-            dataset = TensorDataset(x, waveform, roll_labels)
-        elif cfg.dataset.name in ['Custom']:
-            # dataset = Custom(**cfg.dataset.args)
-            dataset = LatentAudioDataset(
-                cfg.data_root,
-                f'{cfg.data_root}/latents',
-                10  # used 10 in custom dataset
-            )
-        else:
-            pass
+    dataset = Custom(**cfg.dataset.args)
 
-    elif cfg.task.sampling.type == 'generation_ddpm_x0':
-        waveform = torch.randn(S, 327680)
-        dataset = TensorDataset(x, waveform)
+    # if cfg.task.sampling.type == 'inpainting_ddpm_x0':
+    #     if cfg.dataset.name in ['MAESTRO', 'MAPS']:
+    #         dataset = getattr(MusicDataset, cfg.dataset.name)(
+    #             **OmegaConf.to_container(cfg.dataset.args, resolve=True))
+    #         waveform = torch.empty(S, cfg.dataset.args.sequence_length)
+    #         roll_labels = torch.empty(S, 640, 88)
+    #         for i in range(S):
+    #             sample = dataset[i]
+    #             waveform[i] = sample['audio']
+    #             roll_labels[i] = sample['frame']
+    #         dataset = TensorDataset(x, waveform, roll_labels)
+    #     elif cfg.dataset.name in ['Custom']:
+    #         dataset = Custom(**cfg.dataset.args)
+    #     else:
+    #         pass
+
+    # elif cfg.task.sampling.type == 'generation_ddpm_x0':
+    #     waveform = torch.randn(S, 327680)
+    #     dataset = TensorDataset(x, waveform)
+    
+    # print(dataset)
 
     if len(dataset) < cfg.dataloader.batch_size:
         warnings.warn(
             f"Batch size is larger than total number of audio clips. Forcing batch size to {len(dataset)}")
-    loader = DataLoader(dataset, collate_fn=collate_fn, **cfg.dataloader)
+    loader = DataLoader(dataset, **cfg.dataloader)
 
     # Model
     if cfg.task.frame_threshold != None:
         model = getattr(Model, cfg.model.name).load_from_checkpoint(to_absolute_path(cfg.checkpoint_path),
                                                                     sampling=cfg.task.sampling,
                                                                     frame_threshold=cfg.task.frame_threshold,
-                                                                    generation_filter=cfg.task.generation_filter,
-                                                                    inpainting_t=cfg.task.inpainting_t,
-                                                                    inpainting_f=cfg.task.inpainting_f)
+                                                                    timesteps=cfg.task.timesteps)
+                                                                    # generation_filter=cfg.task.generation_filter,
+                                                                    # inpainting_t=cfg.task.inpainting_t,
+                                                                    # inpainting_f=cfg.task.inpainting_f)
     else:
         model = getattr(Model, cfg.model.name).load_from_checkpoint(to_absolute_path(cfg.checkpoint_path),
                                                                     sampling=cfg.task.sampling,
@@ -80,4 +79,5 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    # mp.set_start_method("spawn")
     main()

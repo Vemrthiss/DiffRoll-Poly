@@ -1,25 +1,28 @@
 # gpus: 1
-hop_length: 512
+hop_length: 128
 sequence_length: 327680
 sampling_rate: 16000
 data_root: './dataset'
-checkpoint_path: 'weights/attempt-1.ckpt' # will be ignored in train.py
-
-
-
+checkpoint_path: '/teamspace/studios/this_studio/DiffRoll-Poly/outputs/2025-03-27/16-59-43/ClassifierFreeLatentRoll-ddpm_x0-L15-C512-beta0.02-x_0-dilation2-l2-MAESTRO/version_1/checkpoints/5409e-diffusion_loss0.00.ckpt' # will be ignored in train.py
         
 dataloader:
     batch_size: 4
-    num_workers: 8
+    num_workers: 0
     shuffle: False
-    pin_memory: True
+    pin_memory: False
         
-task:
-    frame_threshold: 0.8 
+# task:
+#     frame_threshold: 0.8 
 #  trainer:
 #     gpus: ${gpus}
     
+task:
+    frame_threshold: 0.5
+    sampling:
+        type: 'ddpm_x0'
+    timesteps: 200
+
 defaults:
     - model: ClassifierFreeLatentRoll
-    - task: generation
+    # - task: generation
     - dataset: Sampling

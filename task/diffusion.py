@@ -1413,11 +1413,9 @@ class LatentRollDiffusion(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         print("-----PREDICT STEP------")
-        print(batch)
         # TODO: check if this is correct, should we index by string and not number?
         noise = batch[0]
         latents = batch[1]
-        device = noise.device
         self.inner_loop.refresh()
         self.inner_loop.reset()
 
@@ -1425,7 +1423,7 @@ class LatentRollDiffusion(pl.LightningModule):
         noise_list.append((noise, self.hparams.timesteps))
 
         for t_index in reversed(range(0, self.hparams.timesteps)):
-            noise, spec = self.reverse_diffusion(noise, latents, t_index)
+            noise, _ = self.reverse_diffusion(noise, latents, t_index)
             noise_npy = noise.detach().cpu().numpy()
             # self.hparams.timesteps-i is used because slide bar won't show
             # if global step starts from self.hparams.timesteps
@@ -1437,8 +1435,8 @@ class LatentRollDiffusion(pl.LightningModule):
         roll_pred = noise_list[-1][0]  # (B, 1, T, F)
 
         if batch_idx == 0:
-            self.visualize_figure(spec.transpose(-1, -2).unsqueeze(1),
-                                  'Test/spec',
+            self.visualize_figure(latents.transpose(-1, -2).unsqueeze(1),
+                                  'Test/latents',
                                   batch_idx)
             for noise_npy, t_index in noise_list:
                 if (t_index+1) % 10 == 0:
@@ -1505,7 +1503,8 @@ class LatentRollDiffusion(pl.LightningModule):
             np_frame = np_frame[0]
             p_est, i_est = extract_notes_wo_velocity(np_frame, np_frame)
 
-            scaling = HOP_LENGTH / SAMPLE_RATE
+            # scaling = HOP_LENGTH / SAMPLE_RATE
+            scaling = 128 / 16000
             # Converting time steps to seconds and midi number to frequency
             i_est = (i_est * scaling).reshape(-1, 2)
             p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
@@ -1676,7 +1675,7 @@ class LatentRollDiffusion(pl.LightningModule):
         # if batch_idx == 0:
         #     self.save_sampling_animation(noise_list)
 
-        return noise_list, latent_features
+        return noise_list, latents
 
     def p_losses(self, label, prediction, loss_type="l1"):
         if loss_type == 'l1':
