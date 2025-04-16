@@ -7525,11 +7525,454 @@ a.anchor-link {
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="Transcription-(Conditional-Generation)">Transcription (Conditional Generation)<a class="anchor-link" href="#Transcription-(Conditional-Generation)">¶</a></h2>
+<h2 id="Transcription-(Conditional-Generation)">Transcription (Conditional Generation)<a class="anchor-link" href="#Transcription-(Conditional-Generation)">¶</a></h2><p>In this section, we use latent variables extracted via Descript Audio Codec as the conditioner to the following models. For transcription, output posteriorgrams is converted into piano rolls and midi files.</p>
+<p>The audio is synthesised via MuseScore.</p>
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs jp-mod-noInput" id="cell-id=0d84a645">
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=c6e78e4b">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h3 id="LatentUnet">LatentUnet<a class="anchor-link" href="#LatentUnet">¶</a></h3>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs jp-mod-noInput" id="cell-id=38deaaab">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noInput" id="cell-id=9c5d4965">
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<style>
+audio {width:200px}; td {vertical-align: center}
+
+.myaudio {
+    controlslist: noplaybackrate;
+    controls
+}
+
+audio::-webkit-media-controls-timeline-container {
+  display: none !important;
+}
+
+
+/* Removes the time stamp */
+audio::-webkit-media-controls-current-time-display {
+  display: none;
+}
+audio::-webkit-media-controls-time-remaining-display {
+  display: none;
+}
+
+/* Removes mute-button */
+audio::-webkit-media-controls-mute-button {
+  display: none !important;
+}
+
+/* Removes volumn slider */
+audio::-webkit-media-controls-volume-slider {
+    display: none !important;
+}
+audio::-webkit-media-controls-volume-slider-container {
+    display: none !important;
+}
+</style>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-200/trajectory.gif"/>
+<table>
+<tr>
+<th>File Name</th>
+<th>Sample 1</th>
+<th>Sample 2</th>
+<th>Sample 3</th>
+<th>Sample 4</th>
+</tr>
+<tr>
+<td>Input Audio</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>Ground Truth Piano Roll</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Transcribed Posteriorgram: 15% residual signal</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-150/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-150/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-150/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-150/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-150/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-150/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-150/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-150/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>Transcribed Posteriorgram: 4.05% residual signal</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-175/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-175/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-175/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-175/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-175/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-175/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-175/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-175/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>
+<p>Transcribed Posteriorgram</p>
+<p>(from random noise, real transcription use case)</p>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-200/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-200/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-200/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentunet/t-200/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-200/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-200/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-200/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentunet/t-200/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=b307b2ba">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h3 id="LatentWave">LatentWave<a class="anchor-link" href="#LatentWave">¶</a></h3>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs jp-mod-noInput" id="cell-id=eb4d13b9">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noInput" id="cell-id=4ede8e24">
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<style>
+audio {width:200px}; td {vertical-align: center}
+
+.myaudio {
+    controlslist: noplaybackrate;
+    controls
+}
+
+audio::-webkit-media-controls-timeline-container {
+  display: none !important;
+}
+
+
+/* Removes the time stamp */
+audio::-webkit-media-controls-current-time-display {
+  display: none;
+}
+audio::-webkit-media-controls-time-remaining-display {
+  display: none;
+}
+
+/* Removes mute-button */
+audio::-webkit-media-controls-mute-button {
+  display: none !important;
+}
+
+/* Removes volumn slider */
+audio::-webkit-media-controls-volume-slider {
+    display: none !important;
+}
+audio::-webkit-media-controls-volume-slider-container {
+    display: none !important;
+}
+</style>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-200/trajectory.gif"/>
+<table>
+<tr>
+<th>File Name</th>
+<th>Sample 1</th>
+<th>Sample 2</th>
+<th>Sample 3</th>
+<th>Sample 4</th>
+</tr>
+<tr>
+<td>Input Audio</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/audio/audio_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>Ground Truth Piano Roll</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/rolls/roll_label3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Transcribed Posteriorgram: 15% residual signal</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-150/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-150/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-150/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-150/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-150/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-150/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-150/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-150/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>Transcribed Posteriorgram: 4.05% residual signal</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-175/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-175/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-175/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-175/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-175/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-175/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-175/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-175/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+<tr>
+<td>
+<p>Transcribed Posteriorgram</p>
+<p>(from random noise, real transcription use case)</p>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-200/pred_roll_0.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-200/pred_roll_1.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-200/pred_roll_2.png" width="200"/>
+</td>
+<td>
+<img alt="No description has been provided for this image" src="samples/transcription/latentwave/t-200/pred_roll_3.png" width="200"/>
+</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-200/clean_midi_0.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-200/clean_midi_1.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-200/clean_midi_2.mp3" type="audio/mp3"/>
+</audio>
+</td>
+<td>
+<audio controls="">
+<source src="samples/transcription/latentwave/t-200/clean_midi_3.mp3" type="audio/mp3"/>
+</audio>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs jp-mod-noInput" id="cell-id=ffcaeb8a">
 </div>
 </main>
 </body>
